@@ -11,3 +11,20 @@ coins through it.
 - `py/` — wallet and miner (coming in E0/E3)
 
 Build: `dotnet build MiniBtc.slnx && dotnet test MiniBtc.slnx`
+
+## Local environment
+
+```bash
+cp .env.example .env            # optional: change credentials or ports
+docker compose up -d --wait     # bitcoind (regtest), PostgreSQL, RabbitMQ
+scripts/btc-cli.sh getblockchaininfo
+```
+
+| Service | Host address | Purpose |
+| --- | --- | --- |
+| bitcoind RPC | 127.0.0.1:18443 | Catch-up sync, broadcast, parity checks |
+| ZMQ rawblock / rawtx / sequence | 127.0.0.1:28332 / 28333 / 28336 | Live block and tx notifications |
+| PostgreSQL | 127.0.0.1:5433 | Blocks, UTXO set, undo data, outbox/inbox |
+| RabbitMQ | 127.0.0.1:5672, UI :15672 | Transport for domain events via the outbox |
+
+`scripts/reset.sh` wipes everything and starts a fresh chain.

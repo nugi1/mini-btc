@@ -1,0 +1,79 @@
+name: mini-bitcoin
+
+services:
+  bitcoind:
+    # Community-maintained Bitcoin Core image (Debian tags are multi-arch, incl. Apple Silicon).
+    # Pinned to a major version so the node's behaviour doesn't change under us.
+    image: bitcoin/bitcoin:30
+    command:
+      - -printtoconsole
+      - -regtest=1
+      - -server=1
+      # Full transaction index: lets us fetch any historical tx by id (getrawtransaction).
+      - -txindex=1
+      # RPC: listen inside the container, accept the Docker network, fixed credentials for dev.
+      - -rpcbind=0.0.0.0
+      - -rpcallowip=0.0.0.0/0
+      - -rpcuser=${BTC_RPC_USER:-minibtc}
+      - -rpcpassword=${BTC_RPC_PASSWORD:-minibtc-regtest}
+      # ZMQ push notifications the node subscribes to:
+      #   rawblock  - every newly connected block, as raw bytes
+      #   rawtx     - every tx entering the mempool or a block, as raw bytes
+      #   sequence  - ordered events: block connect (C) / disconnect (D), mempool add (A) / remove (R)
+      - -zmqpubrawblock=tcp://0.0.0.0:28332
+      - -zmqpubrawtx=tcp://0.0.0.0:28333
+      - -zmqpubsequence=tcp://0.0.0.0:28336
+    ports:
+      - "127.0.0.1:18443:18443"   # JSON-RPC (regtest)
+      - "127.0.0.1:18444:18444"   # P2P (regtest)
+      - "127.0.0.1:28332:28332"   # ZMQ rawblock
+      - "127.0.0.1:28333:28333"   # ZMQ rawtx
+      - "127.0.0.1:28336:28336"   # ZMQ sequence
+    volumes:
+      - bitcoin-data:/home/bitcoin/.bitcoin
+    healthcheck:
+      test: ["CMD-SHELL", "bitcoin-cli -regtest -rpcuser=$${BTC_RPC_USER} -rpcpassword=$${BTC_RPC_PASSWORD} getblockchaininfo > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    environment:
+      BTC_RPC_USER: ${BTC_RPC_USER:-minibtc}
+      BTC_RPC_PASSWORD: ${BTC_RPC_PASSWORD:-minibtc-regtest}
+
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-minibtc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-minibtc}
+      POSTGRES_DB: ${POSTGRES_DB:-minibtc}
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  rabbitmq:
+    # Transport for the MassTransit outbox (Patterns.DDD.MassTransit). Management UI on :15672.
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-minibtc}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-minibtc}
+    ports:
+      - "127.0.0.1:5672:5672"     # AMQP
+      - "127.0.0.1:15672:15672"   # management UI
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+
+volumes:
+  bitcoin-data:
+  postgres-data:
+  rabbitmq-data:
