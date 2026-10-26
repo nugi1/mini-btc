@@ -8,17 +8,19 @@ public sealed class ChainSyncWorkerOptions
     public const string SectionName = "ChainSyncWorker";
 
     /// <summary>
-    /// How often to look for new blocks. The ZMQ subscriber (next commit) triggers syncs instantly;
-    /// this poll stays as the safety net, because ZMQ can drop notifications.
+    /// How often to look for new blocks when no announcement arrives. ZMQ announcements wake the
+    /// worker at once; this poll is the safety net, because ZMQ can lose notifications.
     /// </summary>
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(5);
 }
 
 /// <summary>
-/// Runs ChainSync at startup and then on a timer, each run in its own scope (its own DbContext, its own
+/// The only place ChainSync runs: at startup, whenever ChainSyncSignal is raised (a ZMQ announcement),
+/// and at the latest every PollInterval. Each run gets its own scope (its own DbContext, its own
 /// transactions). It owns the logging: the use case only reports what happened.
 /// </summary>
-public sealed class ChainSyncWorker(IServiceScopeFactory scopes, ChainSyncWorkerOptions options, ILogger<ChainSyncWorker> logger)
+public sealed class ChainSyncWorker(
+    IServiceScopeFactory scopes, ChainSyncSignal signal, ChainSyncWorkerOptions options, ILogger<ChainSyncWorker> logger)
     : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -27,7 +29,7 @@ public sealed class ChainSyncWorker(IServiceScopeFactory scopes, ChainSyncWorker
         while (!stoppingToken.IsCancellationRequested)
         {
             lastProblem = await RunOnceAsync(lastProblem, stoppingToken);
-            await Task.Delay(options.PollInterval, stoppingToken);
+            await signal.WaitAsync(options.PollInterval, stoppingToken);
         }
     }
 

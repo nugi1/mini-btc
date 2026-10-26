@@ -5,6 +5,9 @@
     <PackageVersion Include="Patterns.DDD.Application" Version="1.0.0" />
     <PackageVersion Include="Patterns.DDD.MassTransit" Version="1.0.0" />
 
+    <!-- ZMQ in pure .NET, for Core's block notifications. LGPL-3.0, used as an unmodified library. -->
+    <PackageVersion Include="NetMQ" Version="4.0.4.5" />
+
     <!-- MassTransit v8: Apache 2.0, same line as Patterns.DDD.MassTransit (v9+ is commercially licensed). -->
     <PackageVersion Include="MassTransit.RabbitMQ" Version="8.5.12" />
     <!-- Integration tests start a real host (MassTransit hosted services). -->

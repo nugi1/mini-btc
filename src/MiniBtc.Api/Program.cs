@@ -5,15 +5,22 @@ using MiniBtc.Application.ChainSync;
 using MiniBtc.Domain.Consensus;
 using MiniBtc.Infrastructure;
 using MiniBtc.Infrastructure.Messaging;
+using MiniBtc.Infrastructure.Zmq;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddBitcoinCoreRpc(builder.Configuration);
 builder.Services.AddPersistence(builder.Configuration);
-builder.Services.AddMessaging(builder.Configuration, x => x.AddConsumer<BlockConnectedLogConsumer>());
+builder.Services.AddMessaging(builder.Configuration, x =>
+{
+    x.AddConsumer<BlockConnectedLogConsumer>();
+    x.AddConsumer<BlockAnnouncedConsumer>();
+});
+builder.Services.AddZmqBlockNotifications(builder.Configuration);
 builder.Services.AddSingleton(NetworkParams.Regtest);
 builder.Services.AddSingleton(builder.Configuration.GetSection(ChainSyncOptions.SectionName).Get<ChainSyncOptions>() ?? new ChainSyncOptions());
 builder.Services.AddScoped<ChainSynchronizer>();
 builder.Services.AddSingleton(builder.Configuration.GetSection(ChainSyncWorkerOptions.SectionName).Get<ChainSyncWorkerOptions>() ?? new ChainSyncWorkerOptions());
+builder.Services.AddSingleton<ChainSyncSignal>();
 builder.Services.AddHostedService<ChainSyncWorker>();
 
 var app = builder.Build();
