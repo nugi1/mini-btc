@@ -11,6 +11,8 @@ public sealed class TestDatabase : IAsyncLifetime
 {
     private readonly string _connectionString;
 
+    public string ConnectionString => _connectionString;
+
     public TestDatabase()
     {
         var server = Environment.GetEnvironmentVariable("MINIBTC_TEST_POSTGRES")

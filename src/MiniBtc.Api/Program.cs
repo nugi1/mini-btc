@@ -1,16 +1,25 @@
+using MassTransit;
+using MiniBtc.Api.Hosting;
 using MiniBtc.Application.Abstractions;
 using MiniBtc.Application.ChainSync;
 using MiniBtc.Domain.Consensus;
 using MiniBtc.Infrastructure;
+using MiniBtc.Infrastructure.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddBitcoinCoreRpc(builder.Configuration);
 builder.Services.AddPersistence(builder.Configuration);
+builder.Services.AddMessaging(builder.Configuration, x => x.AddConsumer<BlockConnectedLogConsumer>());
 builder.Services.AddSingleton(NetworkParams.Regtest);
 builder.Services.AddSingleton(builder.Configuration.GetSection(ChainSyncOptions.SectionName).Get<ChainSyncOptions>() ?? new ChainSyncOptions());
 builder.Services.AddScoped<ChainSynchronizer>();
+builder.Services.AddSingleton(builder.Configuration.GetSection(ChainSyncWorkerOptions.SectionName).Get<ChainSyncWorkerOptions>() ?? new ChainSyncWorkerOptions());
+builder.Services.AddHostedService<ChainSyncWorker>();
 
 var app = builder.Build();
+
+// The schema must exist before the outbox delivery service and the sync worker touch the database.
+await app.Services.MigrateDatabaseAsync();
 
 // Liveness plus a live check of the Core connection: which chain, and Core's tip.
 app.MapGet("/health", async (IBitcoinCoreRpc core, CancellationToken cancellationToken) =>
@@ -30,4 +39,4 @@ app.MapGet("/health", async (IBitcoinCoreRpc core, CancellationToken cancellatio
     }
 });
 
-app.Run();
+await app.RunAsync();
