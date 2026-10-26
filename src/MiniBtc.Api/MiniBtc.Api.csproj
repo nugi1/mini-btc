@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="../MiniBtc.Application/MiniBtc.Application.csproj" />
+    <ProjectReference Include="../MiniBtc.Infrastructure/MiniBtc.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

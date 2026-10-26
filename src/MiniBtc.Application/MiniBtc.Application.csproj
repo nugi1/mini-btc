@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../MiniBtc.Domain/MiniBtc.Domain.csproj" />
+  </ItemGroup>
+</Project>

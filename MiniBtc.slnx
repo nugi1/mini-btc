@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MiniBtc.Domain/MiniBtc.Domain.csproj" />
+    <Project Path="src/MiniBtc.Application/MiniBtc.Application.csproj" />
+    <Project Path="src/MiniBtc.Infrastructure/MiniBtc.Infrastructure.csproj" />
+    <Project Path="src/MiniBtc.Api/MiniBtc.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MiniBtc.Domain.Tests/MiniBtc.Domain.Tests.csproj" />
+  </Folder>
+</Solution>
