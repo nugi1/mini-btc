@@ -40,8 +40,9 @@ public sealed class UtxoSet : AggregateRoot<string>
     /// <summary>
     /// Validates a block against the tip and, if it passes, applies it as Core's ConnectBlock does:
     /// spend each input, add each spendable output, collect the spent coins as undo data. All or
-    /// nothing: on failure the set is unchanged. The header rules run first; transaction and block
-    /// rules (values, maturity, subsidy, scripts) join them in the next commits.
+    /// nothing: on failure the set is unchanged. Rules run where Core runs them: header rules and
+    /// CheckTransaction on every tx (CheckBlock), BIP30, then CheckTxInputs per tx as it is applied
+    /// (ConnectBlock). Block-level rules (coinbase placement, subsidy) and scripts come next.
     /// A block on another parent fails with prev-blk-not-found: choosing a branch is the caller's job.
     /// </summary>
     public Result<BlockUndo> Connect(Block block)
@@ -52,6 +53,10 @@ public sealed class UtxoSet : AggregateRoot<string>
         var headerCheck = HeaderRules.All.Check(context);
         if (headerCheck.IsFailure)
             return headerCheck.Error;
+
+        var transactionsCheck = TransactionRules.EachInBlock.Check(context);
+        if (transactionsCheck.IsFailure)
+            return transactionsCheck.Error;
 
         var height = context.Height;
 
@@ -73,16 +78,14 @@ public sealed class UtxoSet : AggregateRoot<string>
         {
             if (!tx.IsCoinbase)
             {
-                var spent = new List<Coin>(tx.Inputs.Count);
-                foreach (var input in tx.Inputs)
-                {
-                    var coin = view.Spend(input.PrevOut);
-                    if (coin is null)
-                        return new Error("bad-txns-inputs-missingorspent",
-                            $"tx {tx.Txid} spends {input.PrevOut}, which is missing or already spent");
-                    spent.Add(coin);
-                }
-                undo.Add(new TxUndo(spent));
+                // Resolve each input against the view (which includes this block's earlier txs), check, then spend.
+                var coins = tx.Inputs.Select(input => view.Get(input.PrevOut)).ToArray();
+                var inputsCheck = TxInputRules.All.Check(new TxSpendContext(tx, coins, height));
+                if (inputsCheck.IsFailure)
+                    return inputsCheck.Error;
+
+                foreach (var input in tx.Inputs) view.Spend(input.PrevOut);
+                undo.Add(new TxUndo(coins.Select(coin => coin!)));
             }
 
             for (var index = 0; index < tx.Outputs.Count; index++)
@@ -108,16 +111,18 @@ public sealed class UtxoSet : AggregateRoot<string>
         private readonly Dictionary<OutPoint, Coin> _added = new();
         private readonly HashSet<OutPoint> _spentFromParent = new();
 
-        public Coin? Spend(OutPoint outPoint)
+        public Coin? Get(OutPoint outPoint)
         {
-            if (_added.Remove(outPoint, out var created))
+            if (_added.TryGetValue(outPoint, out var created))
                 return created;
-            if (!_spentFromParent.Contains(outPoint) && parent.TryGetValue(outPoint, out var existing))
-            {
+            return !_spentFromParent.Contains(outPoint) && parent.TryGetValue(outPoint, out var existing) ? existing : null;
+        }
+
+        /// <summary>Marks a coin spent. Callers resolve it with <see cref="Get"/> and check it first.</summary>
+        public void Spend(OutPoint outPoint)
+        {
+            if (!_added.Remove(outPoint))
                 _spentFromParent.Add(outPoint);
-                return existing;
-            }
-            return null;
         }
 
         public void Add(OutPoint outPoint, Coin coin) => _added.Add(outPoint, coin);

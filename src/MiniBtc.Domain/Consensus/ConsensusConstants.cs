@@ -18,6 +18,12 @@ public static class ConsensusConstants
     /// </summary>
     public const int CoinbaseMaturity = 100;
 
+    /// <summary>consensus/consensus.h MAX_BLOCK_WEIGHT (BIP141): 4 weight units per non-witness byte, 1 per witness byte.</summary>
+    public const int MaxBlockWeight = 4_000_000;
+
+    /// <summary>consensus/consensus.h WITNESS_SCALE_FACTOR: how much more a non-witness byte weighs.</summary>
+    public const int WitnessScaleFactor = 4;
+
     /// <summary>Core: MoneyRange — 0 ≤ value ≤ MAX_MONEY.</summary>
     public static bool IsMoneyRange(long value) => value is >= 0 and <= MaxMoney;
 }

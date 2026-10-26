@@ -2,6 +2,7 @@ using MiniBtc.Domain.Blocks;
 using MiniBtc.Domain.Consensus;
 using MiniBtc.Domain.Hashing;
 using MiniBtc.Domain.Transactions;
+using MiniBtc.Domain.Utxo;
 
 namespace MiniBtc.Domain.Tests.TestData;
 
@@ -45,6 +46,31 @@ internal static class TestChain
     /// <summary>A mined block whose header commits to <paramref name="merkleRoot"/>, right or wrong.</summary>
     public static Block MinedBlockWithMerkleRoot(UInt256 previous, UInt256 merkleRoot, params Transaction[] transactions) =>
         new(Mine(previous, merkleRoot, RegtestBits), transactions);
+
+    /// <summary>
+    /// A UTXO set at height <paramref name="tipHeight"/> whose block 1 paid <paramref name="Coinbase"/>.
+    /// Blocks 2…tip are coinbase-only. With tipHeight 100 the next block (101) may spend block 1's
+    /// coinbase: 101 − 1 = 100 = COINBASE_MATURITY.
+    /// </summary>
+    public static (UtxoSet Utxos, Transaction Coinbase) ChainWithCoinbaseAtHeight1(int tipHeight = 100)
+    {
+        var utxos = UtxoSet.AtGenesis(NetworkParams.Regtest);
+        var coinbase = Coinbase(1);
+        Connect(utxos, MinedBlock(Genesis, coinbase));
+        for (var height = 2; height <= tipHeight; height++)
+            Connect(utxos, MinedBlock(utxos.Tip.Hash, Coinbase(height)));
+        return (utxos, coinbase);
+    }
+
+    /// <summary>Connects a block the test expects to be valid, and fails loudly if it isn't.</summary>
+    public static BlockUndoAndHash Connect(UtxoSet utxos, Block block)
+    {
+        var result = utxos.Connect(block);
+        if (result.IsFailure) throw new InvalidOperationException($"test chain block rejected: {result.Error}");
+        return new BlockUndoAndHash(result.Value, block.Hash);
+    }
+
+    public sealed record BlockUndoAndHash(BlockUndo Undo, UInt256 Hash);
 
     /// <summary>Grinds the nonce until the header hash meets the target its bits encode.</summary>
     public static BlockHeader Mine(UInt256 previous, UInt256 merkleRoot, uint bits)
