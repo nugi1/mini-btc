@@ -21,4 +21,10 @@ public static class DecodeReasons
 
     /// <summary>serialize.h, ReadCompactSize — a length or count above MAX_SIZE (32 MiB).</summary>
     public const string CompactSizeTooLarge = "ReadCompactSize(): size too large";
+
+    /// <summary>
+    /// sendrawtransaction's error when DecodeHexTx fails (rpc/mempool.cpp, RPC_DESERIALIZATION_ERROR).
+    /// Used where Core has no more specific reason: bytes left over after one whole transaction.
+    /// </summary>
+    public const string TxDecodeFailed = "TX decode failed. Make sure the tx has at least one input.";
 }
