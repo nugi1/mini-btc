@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using MiniBtc.Domain.Hashing;
 
 namespace MiniBtc.Domain.Serialization;
 
@@ -21,6 +22,9 @@ public sealed class ByteReader(ReadOnlyMemory<byte> data)
     public int ReadInt32() => BinaryPrimitives.ReadInt32LittleEndian(Take(4));
     public ulong ReadUInt64() => BinaryPrimitives.ReadUInt64LittleEndian(Take(8));
     public long ReadInt64() => BinaryPrimitives.ReadInt64LittleEndian(Take(8));
+
+    /// <summary>32 bytes in wire order: a txid, block hash or merkle root.</summary>
+    public UInt256 ReadUInt256() => new(Take(UInt256.Size));
 
     /// <summary>Copies the next <paramref name="count"/> bytes exactly as they are on the wire (no reversal).</summary>
     public byte[] ReadBytes(int count) => Take(count).ToArray();

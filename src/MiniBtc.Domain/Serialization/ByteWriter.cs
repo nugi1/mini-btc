@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Buffers.Binary;
+using MiniBtc.Domain.Hashing;
 
 namespace MiniBtc.Domain.Serialization;
 
@@ -23,6 +24,13 @@ public sealed class ByteWriter(int initialCapacity = 256)
     public void WriteInt32(int value) => Write(4, value, BinaryPrimitives.WriteInt32LittleEndian);
     public void WriteUInt64(ulong value) => Write(8, value, BinaryPrimitives.WriteUInt64LittleEndian);
     public void WriteInt64(long value) => Write(8, value, BinaryPrimitives.WriteInt64LittleEndian);
+
+    /// <summary>32 bytes in wire order.</summary>
+    public void WriteUInt256(UInt256 value)
+    {
+        value.WriteTo(_buffer.GetSpan(UInt256.Size));
+        _buffer.Advance(UInt256.Size);
+    }
 
     /// <summary>Appends bytes as they are (no reversal).</summary>
     public void WriteBytes(ReadOnlySpan<byte> bytes) => _buffer.Write(bytes);

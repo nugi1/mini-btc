@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Pure domain: no I/O. Bitcoin rules live here. Its only dependency is Patterns.DDD,
-       which is itself dependency-free (Entity, AggregateRoot, domain events, Result/Error, rules). -->
+  <!-- Pure domain: no I/O. Bitcoin rules live here.
+       Patterns.DDD: dependency-free building blocks (Entity, AggregateRoot, domain events, Result/Error, rules).
+       BouncyCastle.Cryptography: RIPEMD-160 only, which the .NET BCL lacks. -->
   <ItemGroup>
     <PackageReference Include="Patterns.DDD" />
+    <PackageReference Include="BouncyCastle.Cryptography" />
   </ItemGroup>
 </Project>
