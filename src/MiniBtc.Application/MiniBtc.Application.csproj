@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <!-- IUnitOfWork, IIntegrationEvent, IntegrationEventMap. No third-party dependencies. -->
+    <PackageReference Include="Patterns.DDD.Application" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../MiniBtc.Domain/MiniBtc.Domain.csproj" />
   </ItemGroup>
 </Project>

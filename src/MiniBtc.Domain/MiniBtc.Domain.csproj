@@ -1,3 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Pure domain: no package references, no I/O. Bitcoin rules live here. -->
+  <!-- Pure domain: no I/O. Bitcoin rules live here. Its only dependency is Patterns.DDD,
+       which is itself dependency-free (Entity, AggregateRoot, domain events, Result/Error, rules). -->
+  <ItemGroup>
+    <PackageReference Include="Patterns.DDD" />
+  </ItemGroup>
 </Project>

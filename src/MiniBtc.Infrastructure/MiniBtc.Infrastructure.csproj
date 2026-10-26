@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <!-- Domain events out through MassTransit's EF Core outbox, ZMQ notifications in through its inbox. -->
+    <PackageReference Include="Patterns.DDD.MassTransit" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../MiniBtc.Application/MiniBtc.Application.csproj" />
   </ItemGroup>
 </Project>
