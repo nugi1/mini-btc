@@ -1,5 +1,6 @@
 using MiniBtc.Domain.Blocks;
 using MiniBtc.Domain.Consensus;
+using MiniBtc.Domain.Scripts;
 using MiniBtc.Domain.Transactions;
 using MiniBtc.Domain.Validation;
 using Patterns.DDD;
@@ -42,10 +43,10 @@ public sealed class UtxoSet : AggregateRoot<string>
     /// spend each input, add each spendable output, collect the spent coins as undo data. All or
     /// nothing: on failure the set is unchanged. Rules run where Core runs them. CheckBlock: header
     /// rules, block structure, CheckTransaction on every tx. ConnectBlock: BIP30, CheckTxInputs per
-    /// tx as it is applied (summing fees), and finally the coinbase amount. Scripts come next.
+    /// tx as it is applied (summing fees) and its scripts, and finally the coinbase amount.
     /// A block on another parent fails with prev-blk-not-found: choosing a branch is the caller's job.
     /// </summary>
-    public Result<BlockUndo> Connect(Block block)
+    public Result<ConnectedBlock> Connect(Block block)
     {
         ArgumentNullException.ThrowIfNull(block);
         var context = new BlockContext(block, Tip, _network);
@@ -78,6 +79,7 @@ public sealed class UtxoSet : AggregateRoot<string>
         // Work on a view over the set (Core: CCoinsViewCache) and commit only if the whole block applies.
         var view = new CoinsView(_coins);
         var undo = new List<TxUndo>();
+        var unverified = new List<UnverifiedScript>();
         long fees = 0;
         foreach (var tx in block.Transactions)
         {
@@ -93,6 +95,16 @@ public sealed class UtxoSet : AggregateRoot<string>
                 fees += TxInputRules.Fee(spend);
                 if (!ConsensusConstants.IsMoneyRange(fees))
                     return new Error("bad-txns-accumulated-fee-outofrange", "accumulated fee in the block out of range");
+
+                // Core: CheckInputScripts. Any failing input makes the whole block invalid.
+                for (var i = 0; i < tx.Inputs.Count; i++)
+                {
+                    var script = P2pkhVerifier.Verify(tx, i, coins[i]!.Output);
+                    if (script.Status == ScriptStatus.Failed)
+                        return new Error($"block-script-verify-flag-failed ({script.Detail})", $"input {i} of tx {tx.Txid}");
+                    if (script.Status == ScriptStatus.NotVerified)
+                        unverified.Add(new UnverifiedScript(tx.Txid, i, script.Detail!));
+                }
 
                 foreach (var input in tx.Inputs) view.Spend(input.PrevOut);
                 undo.Add(new TxUndo(coins.Select(coin => coin!)));
@@ -113,7 +125,7 @@ public sealed class UtxoSet : AggregateRoot<string>
         view.CommitTo(_coins);
         Tip = new ChainTip(block.Hash, height);
         Raise(new BlockConnected(block.Hash, height, block.Transactions.Count));
-        return new BlockUndo(undo);
+        return new ConnectedBlock(new BlockUndo(undo), fees, unverified);
     }
 
     /// <summary>

@@ -1,4 +1,6 @@
 using MiniBtc.Domain.Consensus;
+using MiniBtc.Domain.Scripts;
+using MiniBtc.Domain.Tests.TestData;
 using MiniBtc.Domain.Transactions;
 using MiniBtc.Domain.Utxo;
 using static MiniBtc.Domain.Tests.TestData.TestChain;
@@ -27,7 +29,7 @@ public class UtxoSetTests
         var coinbase = Coinbase(1);
         var block = MinedBlock(Genesis, coinbase);
 
-        var undo = utxos.Connect(block).Value;
+        var undo = utxos.Connect(block).Value.Undo;
 
         Assert.Equal(new ChainTip(block.Hash, 1), utxos.Tip);
         var coin = Assert.Single(utxos.Coins);
@@ -67,7 +69,7 @@ public class UtxoSetTests
         var coinsBefore = utxos.Coins.Count;
 
         var payment = Spend([new OutPoint(coinbase.Txid, 0)], 10 * Btc, 39 * Btc);
-        var undo = utxos.Connect(MinedBlock(utxos.Tip.Hash, Coinbase(101), payment)).Value;
+        var undo = utxos.Connect(MinedBlock(utxos.Tip.Hash, Coinbase(101), payment)).Value.Undo;
 
         Assert.Null(utxos.GetCoin(new OutPoint(coinbase.Txid, 0)));
         Assert.Equal(new Coin(payment.Outputs[0], 101, IsCoinbase: false), utxos.GetCoin(new OutPoint(payment.Txid, 0)));
@@ -85,7 +87,7 @@ public class UtxoSetTests
 
         var parent = Spend([new OutPoint(coinbase.Txid, 0)], 49 * Btc);
         var child = Spend([new OutPoint(parent.Txid, 0)], 48 * Btc);
-        var undo = utxos.Connect(MinedBlock(utxos.Tip.Hash, Coinbase(101), parent, child)).Value;
+        var undo = utxos.Connect(MinedBlock(utxos.Tip.Hash, Coinbase(101), parent, child)).Value.Undo;
 
         Assert.Null(utxos.GetCoin(new OutPoint(parent.Txid, 0)));          // created and spent within block 101
         Assert.NotNull(utxos.GetCoin(new OutPoint(child.Txid, 0)));
@@ -185,6 +187,48 @@ public class UtxoSetTests
 
         Assert.Equal("prev-blk-not-found", result.Error!.Code);
         Assert.Equal(tip, utxos.Tip);
+    }
+
+    [Fact]
+    public void A_correctly_signed_p2pkh_spend_is_verified_by_our_own_code()
+    {
+        var key = TestSigner.KeyOne;
+        var (utxos, coinbase) = ChainWithCoinbaseAtHeight1(payTo: key.P2pkhScript);
+        var payment = key.SignInput(Spend([new OutPoint(coinbase.Txid, 0)], 49 * Btc), 0);
+
+        var result = utxos.Connect(MinedBlock(utxos.Tip.Hash, Coinbase(101), payment));
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        Assert.Empty(result.Value.UnverifiedScripts);   // checked, not taken on trust
+        Assert.Equal(1 * Btc, result.Value.Fees);
+    }
+
+    [Fact]
+    public void A_bad_signature_makes_the_block_invalid_with_cores_reason()
+    {
+        var key = TestSigner.KeyOne;
+        var (utxos, coinbase) = ChainWithCoinbaseAtHeight1(payTo: key.P2pkhScript);
+        var signed = key.SignInput(Spend([new OutPoint(coinbase.Txid, 0)], 49 * Btc), 0);
+        // Same signature, but the output now pays 1 sat more than what was signed.
+        var tampered = new Transaction(signed.Version, signed.Inputs,
+            [new TxOut(49 * Btc - 1, signed.Outputs[0].ScriptPubKey.Span)], signed.LockTime);
+
+        var result = utxos.Connect(MinedBlock(utxos.Tip.Hash, Coinbase(101), tampered));
+
+        Assert.Equal($"block-script-verify-flag-failed ({ScriptErrors.EvalFalse})", result.Error!.Code);
+        Assert.NotNull(utxos.GetCoin(new OutPoint(coinbase.Txid, 0)));
+    }
+
+    [Fact]
+    public void Scripts_we_do_not_verify_are_accepted_and_flagged()
+    {
+        var (utxos, coinbase) = ChainWithCoinbaseAtHeight1(); // pays to OP_TRUE, not P2PKH
+        var payment = Spend([new OutPoint(coinbase.Txid, 0)], 49 * Btc);
+
+        var result = utxos.Connect(MinedBlock(utxos.Tip.Hash, Coinbase(101), payment));
+
+        var flagged = Assert.Single(result.Value.UnverifiedScripts);
+        Assert.Equal((payment.Txid, 0), (flagged.Txid, flagged.InputIndex));
     }
 
     [Fact]

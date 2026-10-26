@@ -32,6 +32,13 @@ internal static class TestChain
             [new TxOut(value, AnyoneCanSpend), .. extraOutputs],
             0);
 
+    /// <summary>A 50 BTC coinbase paying to <paramref name="scriptPubKey"/>.</summary>
+    public static Transaction CoinbasePayingTo(int height, byte[] scriptPubKey) =>
+        new(2,
+            [new TxIn(OutPoint.Null, [0x03, (byte)height, (byte)(height >> 8), (byte)(height >> 16)])],
+            [new TxOut(50 * ConsensusConstants.Coin, scriptPubKey)],
+            0);
+
     /// <summary>Spends the given outpoints into outputs of the given values.</summary>
     public static Transaction Spend(OutPoint[] inputs, params long[] outputValues) =>
         new(2,
@@ -52,10 +59,10 @@ internal static class TestChain
     /// Blocks 2…tip are coinbase-only. With tipHeight 100 the next block (101) may spend block 1's
     /// coinbase: 101 − 1 = 100 = COINBASE_MATURITY.
     /// </summary>
-    public static (UtxoSet Utxos, Transaction Coinbase) ChainWithCoinbaseAtHeight1(int tipHeight = 100)
+    public static (UtxoSet Utxos, Transaction Coinbase) ChainWithCoinbaseAtHeight1(int tipHeight = 100, byte[]? payTo = null)
     {
         var utxos = UtxoSet.AtGenesis(NetworkParams.Regtest);
-        var coinbase = Coinbase(1);
+        var coinbase = payTo is null ? Coinbase(1) : CoinbasePayingTo(1, payTo);
         Connect(utxos, MinedBlock(Genesis, coinbase));
         for (var height = 2; height <= tipHeight; height++)
             Connect(utxos, MinedBlock(utxos.Tip.Hash, Coinbase(height)));
@@ -67,7 +74,7 @@ internal static class TestChain
     {
         var result = utxos.Connect(block);
         if (result.IsFailure) throw new InvalidOperationException($"test chain block rejected: {result.Error}");
-        return new BlockUndoAndHash(result.Value, block.Hash);
+        return new BlockUndoAndHash(result.Value.Undo, block.Hash);
     }
 
     public sealed record BlockUndoAndHash(BlockUndo Undo, UInt256 Hash);
