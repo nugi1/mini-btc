@@ -5,6 +5,10 @@
     <PackageVersion Include="Patterns.DDD.Application" Version="1.0.0" />
     <PackageVersion Include="Patterns.DDD.MassTransit" Version="1.0.0" />
 
+    <!-- Infrastructure: typed HttpClient for Core's JSON-RPC, options from configuration. -->
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.14" />
+
     <!-- RIPEMD-160 for Hash160: not in the .NET BCL on .NET Core/5+. MIT licence. -->
     <PackageVersion Include="BouncyCastle.Cryptography" Version="2.6.2" />
 

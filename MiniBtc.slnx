@@ -7,5 +7,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/MiniBtc.Domain.Tests/MiniBtc.Domain.Tests.csproj" />
+    <Project Path="tests/MiniBtc.Infrastructure.Tests/MiniBtc.Infrastructure.Tests.csproj" />
   </Folder>
 </Solution>
