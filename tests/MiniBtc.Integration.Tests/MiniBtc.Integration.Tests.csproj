@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tests against the services in docker-compose.yml: start them with docker compose up first. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/MiniBtc.Infrastructure/MiniBtc.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Shared chain builder from the domain tests, compiled in rather than copied. -->
+    <Compile Include="../MiniBtc.Domain.Tests/TestData/TestChain.cs" Link="TestData/TestChain.cs" />
+  </ItemGroup>
+</Project>

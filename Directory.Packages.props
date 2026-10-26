@@ -9,6 +9,12 @@
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.14" />
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.14" />
 
+    <!-- Persistence: EF Core 10 on PostgreSQL. Relational is pinned so every project resolves the
+         same EF Core build (MassTransit alone would bring an older one). -->
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.14" />
+
     <!-- RIPEMD-160 for Hash160: not in the .NET BCL on .NET Core/5+. MIT licence. -->
     <PackageVersion Include="BouncyCastle.Cryptography" Version="2.6.2" />
 

@@ -36,6 +36,13 @@ public sealed class UtxoSet : AggregateRoot<string>
     public static UtxoSet AtGenesis(NetworkParams network) =>
         new(network, new ChainTip(network.GenesisHash, 0), new Dictionary<OutPoint, Coin>());
 
+    /// <summary>
+    /// Rehydrates a set from storage: the tip it reflected and the coins it held. Persistence calls
+    /// this; it is the only way back into the aggregate besides replaying every block.
+    /// </summary>
+    public static UtxoSet Restore(NetworkParams network, ChainTip tip, IEnumerable<KeyValuePair<OutPoint, Coin>> coins) =>
+        new(network, tip, new Dictionary<OutPoint, Coin>(coins));
+
     public Coin? GetCoin(OutPoint outPoint) => _coins.GetValueOrDefault(outPoint);
 
     /// <summary>
@@ -122,10 +129,11 @@ public sealed class UtxoSet : AggregateRoot<string>
         if (coinbaseCheck.IsFailure)
             return coinbaseCheck.Error;
 
+        var changes = view.Changes();
         view.CommitTo(_coins);
         Tip = new ChainTip(block.Hash, height);
         Raise(new BlockConnected(block.Hash, height, block.Transactions.Count));
-        return new ConnectedBlock(new BlockUndo(undo), fees, unverified);
+        return new ConnectedBlock(new BlockUndo(undo), changes, fees, unverified);
     }
 
     /// <summary>
@@ -152,6 +160,8 @@ public sealed class UtxoSet : AggregateRoot<string>
         }
 
         public void Add(OutPoint outPoint, Coin coin) => _added.Add(outPoint, coin);
+
+        public UtxoChanges Changes() => new([.. _spentFromParent], [.. _added]);
 
         public void CommitTo(Dictionary<OutPoint, Coin> coins)
         {

@@ -232,6 +232,37 @@ public class UtxoSetTests
     }
 
     [Fact]
+    public void Connect_reports_the_net_change_to_the_set()
+    {
+        var (utxos, coinbase) = ChainWithCoinbaseAtHeight1();
+        var parent = Spend([new OutPoint(coinbase.Txid, 0)], 49 * Btc);
+        var child = Spend([new OutPoint(parent.Txid, 0)], 48 * Btc);
+        var newCoinbase = Coinbase(101);
+
+        var changes = utxos.Connect(MinedBlock(utxos.Tip.Hash, newCoinbase, parent, child)).Value.Changes;
+
+        Assert.Equal(new[] { new OutPoint(coinbase.Txid, 0) }, changes.Spent);
+        // The parent's output was created and spent inside the block: the set never held it.
+        var created = changes.Created.Select(entry => entry.Key).ToList();
+        Assert.Equal(2, created.Count);
+        Assert.True(new HashSet<OutPoint> { new(newCoinbase.Txid, 0), new(child.Txid, 0) }.SetEquals(created));
+    }
+
+    [Fact]
+    public void A_restored_set_continues_exactly_where_the_original_was()
+    {
+        var (original, coinbase) = ChainWithCoinbaseAtHeight1();
+
+        var restored = UtxoSet.Restore(NetworkParams.Regtest, original.Tip, original.Coins);
+        var payment = Spend([new OutPoint(coinbase.Txid, 0)], 49 * Btc);
+        var result = restored.Connect(MinedBlock(restored.Tip.Hash, Coinbase(101), payment));
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        Assert.Equal(original.Coins.Count - 1 + 2, restored.Coins.Count);
+        Assert.Equal(100, original.Tip.Height); // the original is untouched: Restore copied the coins
+    }
+
+    [Fact]
     public void Header_rules_run_before_any_coin_moves()
     {
         var utxos = UtxoSet.AtGenesis(NetworkParams.Regtest);

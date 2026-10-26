@@ -3,6 +3,7 @@ using MiniBtc.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddBitcoinCoreRpc(builder.Configuration);
+builder.Services.AddPersistence(builder.Configuration);
 
 var app = builder.Build();
 

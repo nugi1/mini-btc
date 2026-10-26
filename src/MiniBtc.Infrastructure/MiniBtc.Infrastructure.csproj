@@ -5,6 +5,9 @@
     <!-- Typed HttpClient for Core's JSON-RPC, and options bound from configuration. -->
     <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <!-- PostgreSQL through EF Core 10. -->
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../MiniBtc.Application/MiniBtc.Application.csproj" />

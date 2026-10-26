@@ -1,5 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
+    <!-- `dotnet ef` uses the API as its startup project; design-time only, never shipped. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../MiniBtc.Application/MiniBtc.Application.csproj" />
     <ProjectReference Include="../MiniBtc.Infrastructure/MiniBtc.Infrastructure.csproj" />
   </ItemGroup>
