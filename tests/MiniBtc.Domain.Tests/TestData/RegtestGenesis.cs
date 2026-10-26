@@ -36,6 +36,13 @@ internal static class RegtestGenesis
         "04e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac" +
         "00000000";                                                          // locktime 0
 
+    /// <summary>Regtest's proof-of-work limit (chainparams.cpp); its compact form is the genesis bits.</summary>
+    public const string PowLimit = "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+    public const uint Bits = 0x207fffff;
+
     public static byte[] Header => Convert.FromHexString(HeaderHex);
     public static byte[] Coinbase => Convert.FromHexString(CoinbaseHex);
+
+    /// <summary>getblock &lt;genesis&gt; 0: header, tx count 1, the coinbase. 285 bytes.</summary>
+    public static byte[] Block => [.. Header, 0x01, .. Coinbase];
 }

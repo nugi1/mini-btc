@@ -28,6 +28,9 @@ public static class DecodeReasons
     /// <summary>primitives/transaction.h — a flag bit other than the witness bit (0x01).</summary>
     public const string UnknownOptionalData = "Unknown transaction optional data";
 
+    /// <summary>submitblock's error when a block won't decode (rpc/mining.cpp, RPC_DESERIALIZATION_ERROR).</summary>
+    public const string BlockDecodeFailed = "Block decode failed";
+
     /// <summary>
     /// sendrawtransaction's error when DecodeHexTx fails (rpc/mempool.cpp, RPC_DESERIALIZATION_ERROR).
     /// Used where Core has no more specific reason: bytes left over after one whole transaction.

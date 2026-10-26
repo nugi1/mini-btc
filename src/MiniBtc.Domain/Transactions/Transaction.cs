@@ -16,6 +16,9 @@ public sealed class Transaction
 {
     private const byte WitnessFlag = 0x01;
 
+    /// <summary>Smallest possible transaction: version, two empty lists, locktime.</summary>
+    internal const int MinSize = 4 + 1 + 1 + 4;
+
     private readonly TxIn[] _inputs;
     private readonly TxOut[] _outputs;
 

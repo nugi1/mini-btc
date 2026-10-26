@@ -34,6 +34,34 @@ public class UInt256Tests
     }
 
     [Fact]
+    public void Orders_numerically_most_significant_byte_first()
+    {
+        // In display form the first hex digits are the most significant; in wire form, the last bytes.
+        var small = UInt256.Parse(new string('0', 62) + "ff");
+        var sameAsSmall = UInt256.Parse(new string('0', 62) + "ff");
+        var large = UInt256.Parse("01" + new string('0', 62));
+
+        Assert.True(small < large);
+        Assert.True(large > small);
+        Assert.True(small <= sameAsSmall);
+        Assert.True(small >= sameAsSmall);
+        Assert.False(small < sameAsSmall);
+        Assert.Equal(-1, Math.Sign(small.CompareTo(large)));
+    }
+
+    [Fact]
+    public void Converts_to_and_from_big_integer()
+    {
+        var genesis = UInt256.Parse(RegtestGenesis.Hash);
+
+        Assert.Equal(genesis, UInt256.FromBigInteger(genesis.ToBigInteger()));
+        Assert.Equal(System.Numerics.BigInteger.Parse("0" + RegtestGenesis.Hash, System.Globalization.NumberStyles.HexNumber),
+            genesis.ToBigInteger());
+        Assert.Throws<ArgumentOutOfRangeException>(() => UInt256.FromBigInteger(System.Numerics.BigInteger.One << 256));
+        Assert.Throws<ArgumentOutOfRangeException>(() => UInt256.FromBigInteger(-1));
+    }
+
+    [Fact]
     public void Rejects_wrong_lengths()
     {
         Assert.Throws<ArgumentException>(() => new UInt256(new byte[31]));
