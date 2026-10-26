@@ -11,6 +11,10 @@
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Blocks captured from our own regtest node by scripts/capture-fixtures.sh. -->
+    <None Include="TestData/regtest/*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../../src/MiniBtc.Domain/MiniBtc.Domain.csproj" />
   </ItemGroup>
 </Project>
