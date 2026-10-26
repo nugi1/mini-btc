@@ -3,6 +3,8 @@ using MiniBtc.Domain.Blocks;
 using MiniBtc.Domain.Consensus;
 using MiniBtc.Domain.Hashing;
 using MiniBtc.Domain.Serialization;
+using MiniBtc.Domain.Tests.TestData;
+using static MiniBtc.Domain.Tests.TestData.RegtestFixtures;
 
 namespace MiniBtc.Domain.Tests;
 
@@ -130,13 +132,5 @@ public class CapturedRegtestBlockTests
         Assert.Equal(3, mixed.Transactions.Count);                       // odd: last txid pairs with itself
         Assert.Contains(mixed.Transactions.Skip(1), tx => !tx.HasWitness); // legacy P2PKH spend
         Assert.Contains(mixed.Transactions.Skip(1), tx => tx.HasWitness);  // SegWit spend
-    }
-
-    private static (byte[] Raw, JsonElement Core) Load(string name)
-    {
-        var directory = Path.Combine(AppContext.BaseDirectory, "TestData", "regtest");
-        var raw = Convert.FromHexString(File.ReadAllText(Path.Combine(directory, $"{name}.hex")).Trim());
-        using var json = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, $"{name}.json")));
-        return (raw, json.RootElement.Clone());
     }
 }

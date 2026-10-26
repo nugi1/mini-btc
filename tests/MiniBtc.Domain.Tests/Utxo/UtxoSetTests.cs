@@ -1,8 +1,7 @@
 using MiniBtc.Domain.Consensus;
 using MiniBtc.Domain.Transactions;
 using MiniBtc.Domain.Utxo;
-using Patterns.DDD;
-using static MiniBtc.Domain.Tests.Utxo.TestChain;
+using static MiniBtc.Domain.Tests.TestData.TestChain;
 
 namespace MiniBtc.Domain.Tests.Utxo;
 
@@ -26,7 +25,7 @@ public class UtxoSetTests
     {
         var utxos = UtxoSet.AtGenesis(NetworkParams.Regtest);
         var coinbase = Coinbase(1);
-        var block = Block(Genesis, coinbase);
+        var block = MinedBlock(Genesis, coinbase);
 
         var undo = utxos.Connect(block).Value;
 
@@ -41,7 +40,7 @@ public class UtxoSetTests
     public void Connecting_raises_block_connected()
     {
         var utxos = UtxoSet.AtGenesis(NetworkParams.Regtest);
-        var block = Block(Genesis, Coinbase(1));
+        var block = MinedBlock(Genesis, Coinbase(1));
 
         utxos.Connect(block);
 
@@ -55,7 +54,7 @@ public class UtxoSetTests
         var oversized = new TxOut(1, new byte[TxOut.MaxScriptSize + 1]);
         var coinbase = Coinbase(1, 50 * Btc, new TxOut(0, OpReturn), oversized);
 
-        utxos.Connect(Block(Genesis, coinbase));
+        utxos.Connect(MinedBlock(Genesis, coinbase));
 
         Assert.Equal(new[] { new OutPoint(coinbase.Txid, 0) }, utxos.Coins.Keys);
     }
@@ -65,12 +64,12 @@ public class UtxoSetTests
     {
         var utxos = UtxoSet.AtGenesis(NetworkParams.Regtest);
         var coinbase = Coinbase(1);
-        var block1 = Block(Genesis, coinbase);
+        var block1 = MinedBlock(Genesis, coinbase);
         utxos.Connect(block1);
         var spentCoin = utxos.GetCoin(new OutPoint(coinbase.Txid, 0))!;
 
         var payment = Spend([new OutPoint(coinbase.Txid, 0)], 10 * Btc, 39 * Btc);
-        var undo = utxos.Connect(Block(block1.Hash, Coinbase(2), payment)).Value;
+        var undo = utxos.Connect(MinedBlock(block1.Hash, Coinbase(2), payment)).Value;
 
         Assert.Null(utxos.GetCoin(new OutPoint(coinbase.Txid, 0)));
         Assert.Equal(new Coin(payment.Outputs[0], 2, IsCoinbase: false), utxos.GetCoin(new OutPoint(payment.Txid, 0)));
@@ -86,12 +85,12 @@ public class UtxoSetTests
     {
         var utxos = UtxoSet.AtGenesis(NetworkParams.Regtest);
         var coinbase = Coinbase(1);
-        var block1 = Block(Genesis, coinbase);
+        var block1 = MinedBlock(Genesis, coinbase);
         utxos.Connect(block1);
 
         var parent = Spend([new OutPoint(coinbase.Txid, 0)], 49 * Btc);
         var child = Spend([new OutPoint(parent.Txid, 0)], 48 * Btc);
-        var undo = utxos.Connect(Block(block1.Hash, Coinbase(2), parent, child)).Value;
+        var undo = utxos.Connect(MinedBlock(block1.Hash, Coinbase(2), parent, child)).Value;
 
         Assert.Null(utxos.GetCoin(new OutPoint(parent.Txid, 0)));          // created and spent within block 2
         Assert.NotNull(utxos.GetCoin(new OutPoint(child.Txid, 0)));
@@ -102,13 +101,13 @@ public class UtxoSetTests
     public void Spending_a_missing_coin_fails_and_changes_nothing()
     {
         var utxos = UtxoSet.AtGenesis(NetworkParams.Regtest);
-        var block1 = Block(Genesis, Coinbase(1));
+        var block1 = MinedBlock(Genesis, Coinbase(1));
         utxos.Connect(block1);
         var before = utxos.Coins.ToDictionary();
         var eventsBefore = utxos.DomainEvents.Count;
 
         var spendsNothing = Spend([new OutPoint(Genesis, 7)], 1 * Btc);
-        var result = utxos.Connect(Block(block1.Hash, Coinbase(2), spendsNothing));
+        var result = utxos.Connect(MinedBlock(block1.Hash, Coinbase(2), spendsNothing));
 
         Assert.Equal("bad-txns-inputs-missingorspent", result.Error!.Code);
         Assert.Equal(before.Count, utxos.Coins.Count); // block 2's coinbase was not added either
@@ -122,12 +121,12 @@ public class UtxoSetTests
     {
         var utxos = UtxoSet.AtGenesis(NetworkParams.Regtest);
         var coinbase = Coinbase(1);
-        var block1 = Block(Genesis, coinbase);
+        var block1 = MinedBlock(Genesis, coinbase);
         utxos.Connect(block1);
 
         var first = Spend([new OutPoint(coinbase.Txid, 0)], 10 * Btc);
         var second = Spend([new OutPoint(coinbase.Txid, 0)], 20 * Btc);
-        var result = utxos.Connect(Block(block1.Hash, Coinbase(2), first, second));
+        var result = utxos.Connect(MinedBlock(block1.Hash, Coinbase(2), first, second));
 
         Assert.Equal("bad-txns-inputs-missingorspent", result.Error!.Code);
         Assert.NotNull(utxos.GetCoin(new OutPoint(coinbase.Txid, 0)));  // still unspent
@@ -138,25 +137,42 @@ public class UtxoSetTests
     {
         var utxos = UtxoSet.AtGenesis(NetworkParams.Regtest);
         var coinbase = Coinbase(1);
-        var block1 = Block(Genesis, coinbase);
+        var block1 = MinedBlock(Genesis, coinbase);
         utxos.Connect(block1);
 
         // The very same coinbase again: same txid, so the same outpoint, which is still unspent.
-        var result = utxos.Connect(Block(block1.Hash, coinbase));
+        var result = utxos.Connect(MinedBlock(block1.Hash, coinbase));
 
         Assert.Equal("bad-txns-BIP30", result.Error!.Code);
         Assert.Equal(1, utxos.Tip.Height);
     }
 
     [Fact]
-    public void A_block_that_does_not_build_on_the_tip_is_a_caller_bug()
+    public void A_block_that_does_not_build_on_the_tip_is_rejected_and_changes_nothing()
     {
         var utxos = UtxoSet.AtGenesis(NetworkParams.Regtest);
-        var block1 = Block(Genesis, Coinbase(1));
+        var block1 = MinedBlock(Genesis, Coinbase(1));
         utxos.Connect(block1);
 
-        var sibling = Block(Genesis, Coinbase(1, 25 * ConsensusConstants.Coin)); // competes with block 1
+        var sibling = MinedBlock(Genesis, Coinbase(1, 25 * ConsensusConstants.Coin)); // competes with block 1
+        var result = utxos.Connect(sibling);
 
-        Assert.Throws<DomainException>(() => utxos.Connect(sibling));
+        Assert.Equal("prev-blk-not-found", result.Error!.Code);
+        Assert.Equal(new ChainTip(block1.Hash, 1), utxos.Tip);
+    }
+
+    [Fact]
+    public void Header_rules_run_before_any_coin_moves()
+    {
+        var utxos = UtxoSet.AtGenesis(NetworkParams.Regtest);
+        var coinbase = Coinbase(1);
+        var unmined = new MiniBtc.Domain.Blocks.Block(
+            MineBadly(Genesis, coinbase.Txid, RegtestBits), [coinbase]);
+
+        var result = utxos.Connect(unmined);
+
+        Assert.Equal("high-hash", result.Error!.Code);
+        Assert.Empty(utxos.Coins);
+        Assert.Empty(utxos.DomainEvents);
     }
 }

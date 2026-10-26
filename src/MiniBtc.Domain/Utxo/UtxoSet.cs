@@ -1,6 +1,7 @@
 using MiniBtc.Domain.Blocks;
 using MiniBtc.Domain.Consensus;
 using MiniBtc.Domain.Transactions;
+using MiniBtc.Domain.Validation;
 using Patterns.DDD;
 
 namespace MiniBtc.Domain.Utxo;
@@ -14,10 +15,12 @@ namespace MiniBtc.Domain.Utxo;
 /// </summary>
 public sealed class UtxoSet : AggregateRoot<string>
 {
+    private readonly NetworkParams _network;
     private readonly Dictionary<OutPoint, Coin> _coins;
 
-    private UtxoSet(string network, ChainTip tip, Dictionary<OutPoint, Coin> coins) : base(network)
+    private UtxoSet(NetworkParams network, ChainTip tip, Dictionary<OutPoint, Coin> coins) : base(network.Name)
     {
+        _network = network;
         Tip = tip;
         _coins = coins;
     }
@@ -30,26 +33,27 @@ public sealed class UtxoSet : AggregateRoot<string>
     /// transactions, so the first 50 BTC can never be spent (validation.cpp ConnectBlock).
     /// </summary>
     public static UtxoSet AtGenesis(NetworkParams network) =>
-        new(network.Name, new ChainTip(network.GenesisHash, 0), new Dictionary<OutPoint, Coin>());
+        new(network, new ChainTip(network.GenesisHash, 0), new Dictionary<OutPoint, Coin>());
 
     public Coin? GetCoin(OutPoint outPoint) => _coins.GetValueOrDefault(outPoint);
 
     /// <summary>
-    /// Applies a block on top of the tip, as Core's ConnectBlock does: spend each input, add each
-    /// spendable output, collect the spent coins as undo data. All or nothing: on failure the set
-    /// is unchanged. Header, transaction and block rules (PoW, values, maturity, subsidy…) arrive in
-    /// the next commits and run before this point; the checks here are the ones applying needs.
+    /// Validates a block against the tip and, if it passes, applies it as Core's ConnectBlock does:
+    /// spend each input, add each spendable output, collect the spent coins as undo data. All or
+    /// nothing: on failure the set is unchanged. The header rules run first; transaction and block
+    /// rules (values, maturity, subsidy, scripts) join them in the next commits.
+    /// A block on another parent fails with prev-blk-not-found: choosing a branch is the caller's job.
     /// </summary>
-    /// <exception cref="DomainException">The block does not build on our tip. Choosing which chain
-    /// to follow (reorg) is the caller's job; Core asserts the same.</exception>
     public Result<BlockUndo> Connect(Block block)
     {
         ArgumentNullException.ThrowIfNull(block);
-        if (block.Header.PreviousBlockHash != Tip.Hash)
-            throw new DomainException(
-                $"Block {block.Hash} builds on {block.Header.PreviousBlockHash}, not on the tip {Tip.Hash}.");
+        var context = new BlockContext(block, Tip, _network);
 
-        var height = Tip.Height + 1;
+        var headerCheck = HeaderRules.All.Check(context);
+        if (headerCheck.IsFailure)
+            return headerCheck.Error;
+
+        var height = context.Height;
 
         // BIP30: no transaction may create an outpoint that is still unspent. Checked against the
         // set as it stood before this block, like Core.
