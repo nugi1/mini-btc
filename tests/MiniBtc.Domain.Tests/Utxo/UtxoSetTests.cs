@@ -52,7 +52,7 @@ public class UtxoSetTests
     {
         var utxos = UtxoSet.AtGenesis(NetworkParams.Regtest);
         var oversized = new TxOut(1, new byte[TxOut.MaxScriptSize + 1]);
-        var coinbase = Coinbase(1, 50 * Btc, new TxOut(0, OpReturn), oversized);
+        var coinbase = Coinbase(1, 50 * Btc - 1, new TxOut(0, OpReturn), oversized); // total exactly 50 BTC
 
         utxos.Connect(MinedBlock(Genesis, coinbase));
 

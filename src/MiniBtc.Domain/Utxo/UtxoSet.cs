@@ -40,9 +40,9 @@ public sealed class UtxoSet : AggregateRoot<string>
     /// <summary>
     /// Validates a block against the tip and, if it passes, applies it as Core's ConnectBlock does:
     /// spend each input, add each spendable output, collect the spent coins as undo data. All or
-    /// nothing: on failure the set is unchanged. Rules run where Core runs them: header rules and
-    /// CheckTransaction on every tx (CheckBlock), BIP30, then CheckTxInputs per tx as it is applied
-    /// (ConnectBlock). Block-level rules (coinbase placement, subsidy) and scripts come next.
+    /// nothing: on failure the set is unchanged. Rules run where Core runs them. CheckBlock: header
+    /// rules, block structure, CheckTransaction on every tx. ConnectBlock: BIP30, CheckTxInputs per
+    /// tx as it is applied (summing fees), and finally the coinbase amount. Scripts come next.
     /// A block on another parent fails with prev-blk-not-found: choosing a branch is the caller's job.
     /// </summary>
     public Result<BlockUndo> Connect(Block block)
@@ -53,6 +53,10 @@ public sealed class UtxoSet : AggregateRoot<string>
         var headerCheck = HeaderRules.All.Check(context);
         if (headerCheck.IsFailure)
             return headerCheck.Error;
+
+        var structureCheck = BlockRules.Structure.Check(context);
+        if (structureCheck.IsFailure)
+            return structureCheck.Error;
 
         var transactionsCheck = TransactionRules.EachInBlock.Check(context);
         if (transactionsCheck.IsFailure)
@@ -74,15 +78,21 @@ public sealed class UtxoSet : AggregateRoot<string>
         // Work on a view over the set (Core: CCoinsViewCache) and commit only if the whole block applies.
         var view = new CoinsView(_coins);
         var undo = new List<TxUndo>();
+        long fees = 0;
         foreach (var tx in block.Transactions)
         {
             if (!tx.IsCoinbase)
             {
                 // Resolve each input against the view (which includes this block's earlier txs), check, then spend.
                 var coins = tx.Inputs.Select(input => view.Get(input.PrevOut)).ToArray();
-                var inputsCheck = TxInputRules.All.Check(new TxSpendContext(tx, coins, height));
+                var spend = new TxSpendContext(tx, coins, height);
+                var inputsCheck = TxInputRules.All.Check(spend);
                 if (inputsCheck.IsFailure)
                     return inputsCheck.Error;
+
+                fees += TxInputRules.Fee(spend);
+                if (!ConsensusConstants.IsMoneyRange(fees))
+                    return new Error("bad-txns-accumulated-fee-outofrange", "accumulated fee in the block out of range");
 
                 foreach (var input in tx.Inputs) view.Spend(input.PrevOut);
                 undo.Add(new TxUndo(coins.Select(coin => coin!)));
@@ -95,6 +105,10 @@ public sealed class UtxoSet : AggregateRoot<string>
                     view.Add(new OutPoint(tx.Txid, (uint)index), new Coin(output, height, tx.IsCoinbase));
             }
         }
+
+        var coinbaseCheck = BlockRules.CoinbaseAmount.Check(new CoinbaseContext(block, height, fees, _network));
+        if (coinbaseCheck.IsFailure)
+            return coinbaseCheck.Error;
 
         view.CommitTo(_coins);
         Tip = new ChainTip(block.Hash, height);
