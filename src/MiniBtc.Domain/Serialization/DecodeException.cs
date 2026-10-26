@@ -22,6 +22,12 @@ public static class DecodeReasons
     /// <summary>serialize.h, ReadCompactSize — a length or count above MAX_SIZE (32 MiB).</summary>
     public const string CompactSizeTooLarge = "ReadCompactSize(): size too large";
 
+    /// <summary>primitives/transaction.h — witness flag set, but every input's witness stack is empty.</summary>
+    public const string SuperfluousWitness = "Superfluous witness record";
+
+    /// <summary>primitives/transaction.h — a flag bit other than the witness bit (0x01).</summary>
+    public const string UnknownOptionalData = "Unknown transaction optional data";
+
     /// <summary>
     /// sendrawtransaction's error when DecodeHexTx fails (rpc/mempool.cpp, RPC_DESERIALIZATION_ERROR).
     /// Used where Core has no more specific reason: bytes left over after one whole transaction.

@@ -69,6 +69,19 @@ public sealed class ByteReader(ReadOnlyMemory<byte> data)
     /// <summary>A CompactSize length followed by that many bytes (scripts, witness items).</summary>
     public byte[] ReadVarBytes() => ReadBytes(ReadCount());
 
+    /// <summary>
+    /// A CompactSize count followed by that many elements. A count may claim up to 32 MiB of
+    /// elements. Like Core, which reads vectors in chunks, we never reserve more than the remaining
+    /// bytes could hold, so a lying count ends in "end of data" rather than a huge allocation.
+    /// </summary>
+    public List<T> ReadVector<T>(Func<ByteReader, T> readElement, int minElementSize)
+    {
+        var count = ReadCount();
+        var items = new List<T>(Math.Min(count, Remaining / minElementSize));
+        for (var i = 0; i < count; i++) items.Add(readElement(this));
+        return items;
+    }
+
     private ReadOnlySpan<byte> Take(int count)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(count);
