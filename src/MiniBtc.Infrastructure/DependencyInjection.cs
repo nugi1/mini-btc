@@ -40,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<IChainStore, ChainStore>();
         services.AddScoped<IAddressIndex, AddressIndex>();
         services.AddScoped<ICoinLookup, CoinLookup>();
+        services.AddScoped<IUtxoStats, UtxoStats>();
         return services;
     }
 }

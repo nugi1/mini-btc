@@ -75,6 +75,29 @@ public sealed class BitcoinCoreRpcClient : IBitcoinCoreRpc
         return new RawMempool(txids, result.GetProperty("mempool_sequence").GetUInt64());
     }
 
+    public async Task<TxOutSetInfo> GetTxOutSetInfoAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await CallAsync("gettxoutsetinfo", [], cancellationToken);
+        return new TxOutSetInfo(
+            result.GetProperty("height").GetInt32(),
+            UInt256.Parse(result.GetProperty("bestblock").GetString()!),
+            result.GetProperty("txouts").GetInt64(),
+            ToSatoshis(result.GetProperty("total_amount")));
+    }
+
+    public async Task<TxOutSetScan> ScanTxOutSetAsync(string descriptor, CancellationToken cancellationToken = default)
+    {
+        var result = await CallAsync("scantxoutset", ["start", new[] { descriptor }], cancellationToken);
+        return new TxOutSetScan(
+            result.GetProperty("height").GetInt32(),
+            UInt256.Parse(result.GetProperty("bestblock").GetString()!),
+            result.GetProperty("unspents").GetArrayLength(),
+            ToSatoshis(result.GetProperty("total_amount")));
+    }
+
+    /// <summary>Core prints amounts as BTC with up to 8 decimals; read as decimal, never double, then scale exactly.</summary>
+    private static long ToSatoshis(JsonElement btc) => decimal.ToInt64(btc.GetDecimal() * 100_000_000m);
+
     private async Task<JsonElement> CallAsync(string method, object[] parameters, CancellationToken cancellationToken)
     {
         var request = new RpcRequest("2.0", Interlocked.Increment(ref _nextId), method, parameters);

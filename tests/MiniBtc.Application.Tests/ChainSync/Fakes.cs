@@ -32,6 +32,12 @@ internal sealed class FakeCore
     public (int Code, string Message)? RejectSends { get; set; }
     public int SendRequests { get; private set; }
 
+    /// <summary>What gettxoutsetinfo answers; null makes it fail as if Core were down.</summary>
+    public TxOutSetInfo? UtxoSetInfo { get; set; }
+
+    /// <summary>scantxoutset answers by descriptor; unknown descriptors find nothing.</summary>
+    public Dictionary<string, TxOutSetScan> Scans { get; } = [];
+
     /// <summary>Like invalidateblock on the tip, <paramref name="count"/> times: the chain gets shorter.</summary>
     public FakeCore Invalidate(int count)
     {
@@ -104,6 +110,14 @@ internal sealed class FakeCore
 
         public Task<RawMempool> GetRawMempoolAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new RawMempool(core.Mempool.Select(tx => tx.Txid).ToList(), core.MempoolSequence));
+
+        public Task<TxOutSetInfo> GetTxOutSetInfoAsync(CancellationToken cancellationToken = default) =>
+            core.UtxoSetInfo is { } info
+                ? Task.FromResult(info)
+                : throw new HttpRequestException("Core is down");
+
+        public Task<TxOutSetScan> ScanTxOutSetAsync(string descriptor, CancellationToken cancellationToken = default) =>
+            Task.FromResult(core.Scans.GetValueOrDefault(descriptor) ?? new TxOutSetScan(core.Height, core._chain[^1].Hash, 0, 0));
     }
 }
 

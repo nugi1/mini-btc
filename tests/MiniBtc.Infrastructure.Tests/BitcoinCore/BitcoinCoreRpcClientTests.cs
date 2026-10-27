@@ -166,6 +166,34 @@ public class BitcoinCoreRpcClientTests
         Assert.Equal(message, ex.CoreMessage);
     }
 
+    [Fact]
+    public async Task Gettxoutsetinfo_reads_amounts_as_exact_satoshis()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, $$$"""
+            {"jsonrpc":"2.0","id":1,"result":{"height":110,"bestblock":"{{{GenesisHash}}}","txouts":111,"bogosize":8325,
+             "hash_serialized_3":"00","total_amount":5550.00000001,"transactions":111,"disk_size":0}}
+            """);
+
+        var info = await CreateClient(handler).GetTxOutSetInfoAsync();
+
+        Assert.Equal(new TxOutSetInfo(110, UInt256.Parse(GenesisHash), 111, 555_000_000_001), info);
+    }
+
+    [Fact]
+    public async Task Scantxoutset_starts_a_scan_for_one_descriptor()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, $$$"""
+            {"jsonrpc":"2.0","id":1,"result":{"success":true,"txouts":111,"height":110,"bestblock":"{{{GenesisHash}}}",
+             "unspents":[{"txid":"{{{GenesisHash}}}","vout":0,"amount":0.1}],"total_amount":0.10000000}}
+            """);
+
+        var scan = await CreateClient(handler).ScanTxOutSetAsync("addr(mrCDrCybB6J1vRfbwM5hemdJz73FwDBC8r)");
+
+        using var body = JsonDocument.Parse(handler.Requests.Single().Body);
+        Assert.Equal("""["start",["addr(mrCDrCybB6J1vRfbwM5hemdJz73FwDBC8r)"]]""", body.RootElement.GetProperty("params").GetRawText());
+        Assert.Equal((1, 10_000_000L), (scan.Unspents, scan.TotalAmount));
+    }
+
     private static BitcoinCoreRpcClient CreateClient(StubHandler handler) =>
         new(new HttpClient(handler), Options.Create(new BitcoinCoreOptions()));
 

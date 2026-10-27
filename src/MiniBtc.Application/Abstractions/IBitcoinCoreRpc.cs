@@ -34,7 +34,27 @@ public interface IBitcoinCoreRpc
     /// reflect. ZMQ sequence events at or below that number are already included.
     /// </summary>
     Task<RawMempool> GetRawMempoolAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// gettxoutsetinfo — statistics of Core's whole UTXO set at its tip: how many coins, how much
+    /// value. The parity check compares them with ours.
+    /// </summary>
+    Task<TxOutSetInfo> GetTxOutSetInfoAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// scantxoutset start [descriptor] — Core's own scan of its UTXO set for the coins a descriptor
+    /// (e.g. "addr(mrCD…)") matches. Independent of any wallet.
+    /// </summary>
+    Task<TxOutSetScan> ScanTxOutSetAsync(string descriptor, CancellationToken cancellationToken = default);
 }
+
+/// <param name="TxOuts">Number of unspent outputs.</param>
+/// <param name="TotalAmount">Their total value in satoshis.</param>
+public sealed record TxOutSetInfo(int Height, UInt256 BestBlock, long TxOuts, long TotalAmount);
+
+/// <param name="Unspents">How many coins matched.</param>
+/// <param name="TotalAmount">Their total value in satoshis.</param>
+public sealed record TxOutSetScan(int Height, UInt256 BestBlock, int Unspents, long TotalAmount);
 
 /// <param name="Txids">Every transaction in Core's mempool.</param>
 /// <param name="MempoolSequence">Core's mempool sequence number at that moment.</param>
