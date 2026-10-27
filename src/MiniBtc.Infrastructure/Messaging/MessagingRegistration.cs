@@ -23,11 +23,16 @@ public static class MessagingRegistration
         Action<IEntityFrameworkOutboxConfigurator>? configureOutbox = null)
     {
         var rabbit = configuration.GetSection(RabbitMqOptions.SectionName).Get<RabbitMqOptions>() ?? new RabbitMqOptions();
+        var outboxOptions = configuration.GetSection(OutboxOptions.SectionName).Get<OutboxOptions>() ?? new OutboxOptions();
 
         services.AddMassTransit(x =>
         {
             x.SetEndpointNameFormatter(new KebabCaseEndpointNameFormatter(endpointPrefix ?? "minibtc", includeNamespace: false));
-            x.AddDomainEventOutbox<MiniBtcDbContext>(IntegrationEvents.Configure, configureOutbox);
+            x.AddDomainEventOutbox<MiniBtcDbContext>(IntegrationEvents.Configure, outbox =>
+            {
+                outbox.QueryDelay = outboxOptions.QueryDelay;
+                configureOutbox?.Invoke(outbox);
+            });
             configureConsumers?.Invoke(x);
 
             x.UsingRabbitMq((context, cfg) =>
