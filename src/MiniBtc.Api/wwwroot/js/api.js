@@ -20,14 +20,12 @@ async function request(path, options = {}) {
 const enc = encodeURIComponent;
 
 export const api = {
-  health: () => request("/health"),
   summary: () => request("/chain/summary"),
   blocks: (limit = 20, before) => request(`/blocks?limit=${limit}${before != null ? `&before=${before}` : ""}`),
   block: (id) => request(`/blocks/${enc(id)}`),
   tx: (txid) => request(`/tx/${enc(txid)}`),
   mempool: () => request("/mempool/entries"),
   utxos: (address) => request(`/addresses/${enc(address)}/utxos`),
-  balance: (address) => request(`/addresses/${enc(address)}/balance`),
   parity: (addresses = []) => request(`/parity${addresses.length ? "?" + addresses.map((a) => `address=${enc(a)}`).join("&") : ""}`),
   broadcast: (hex) => request("/tx", {
     method: "POST",

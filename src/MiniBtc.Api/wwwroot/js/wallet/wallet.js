@@ -4,7 +4,7 @@
 import { api } from "../api.js";
 import { Key, scriptForAddress } from "./keys.js";
 import { buildPayment } from "./builder.js";
-import { bytesToHex, hexToBytes } from "./bytes.js";
+import { bytesToHex } from "./bytes.js";
 import { serialize, signP2pkh, txid } from "./tx.js";
 
 const STORAGE = { wif: "minibtc.wallet.wif", sent: "minibtc.wallet.sent", pending: "minibtc.wallet.pending" };
@@ -79,4 +79,4 @@ export function parseBtc(text) {
   return BigInt(match[1] || "0") * 100_000_000n + BigInt((match[2] ?? "").padEnd(8, "0"));
 }
 
-export { Key, hexToBytes };
+export { Key };

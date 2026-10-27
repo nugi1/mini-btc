@@ -36,12 +36,6 @@ public sealed class Address : IEquatable<Address>
         }
     }
 
-    public static Address FromPubKeyHash(ReadOnlySpan<byte> pubKeyHash, NetworkParams network)
-    {
-        if (pubKeyHash.Length != 20) throw new ArgumentException("A pubkey hash is 20 bytes.", nameof(pubKeyHash));
-        return new Address(Base58.EncodeCheck([network.PubKeyAddressPrefix, .. pubKeyHash]), AddressType.P2pkh, pubKeyHash.ToArray());
-    }
-
     /// <summary>
     /// Core's DecodeDestination for Base58 strings (src/key_io.cpp), with its error messages. Bech32
     /// (SegWit) addresses are recognized by their prefix and refused: the node verifies P2PKH only.

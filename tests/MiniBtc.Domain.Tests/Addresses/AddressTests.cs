@@ -1,6 +1,7 @@
 using MiniBtc.Domain.Addresses;
 using MiniBtc.Domain.Consensus;
 using MiniBtc.Domain.Hashing;
+using MiniBtc.Domain.Scripts;
 using MiniBtc.Domain.Tests.TestData;
 
 namespace MiniBtc.Domain.Tests.Addresses;
@@ -12,10 +13,10 @@ public class AddressTests
     [Fact]
     public void Key_ones_address_is_the_one_the_python_wallet_derives()
     {
-        var address = Address.FromPubKeyHash(Hashes.Hash160(TestSigner.KeyOne.PublicKey), Regtest);
+        var script = StandardScripts.P2pkh(Hashes.Hash160(TestSigner.KeyOne.PublicKey));
 
-        Assert.Equal("mrCDrCybB6J1vRfbwM5hemdJz73FwDBC8r", address.Text);
-        Assert.Equal(TestSigner.KeyOne.P2pkhScript, address.ScriptPubKey);
+        Assert.Equal("mrCDrCybB6J1vRfbwM5hemdJz73FwDBC8r", OutputScripts.ToAddress(script, Regtest));
+        Assert.Equal(script, Address.Parse("mrCDrCybB6J1vRfbwM5hemdJz73FwDBC8r", Regtest).Value.ScriptPubKey);
     }
 
     /// <summary>Bitcoin Core's src/test/data/key_io_valid.json, the regtest Base58 entries.</summary>
