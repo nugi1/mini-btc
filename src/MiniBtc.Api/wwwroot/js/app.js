@@ -13,6 +13,7 @@ const routes = [
   { pattern: /^\/mempool\/?$/, nav: "mempool", load: () => import("./views/mempool.js") },
   { pattern: /^\/parity\/?$/, nav: "parity", load: () => import("./views/parity.js") },
   { pattern: /^\/broadcast\/?$/, nav: "broadcast", load: () => import("./views/broadcast.js") },
+  { pattern: /^\/wallet(?:\/pay\/([1-9A-HJ-NP-Za-km-z]{25,40}))?\/?$/, nav: "wallet", load: () => import("./views/wallet.js") },
 ];
 
 const view = document.getElementById("view");

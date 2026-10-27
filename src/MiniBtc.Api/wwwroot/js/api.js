@@ -35,3 +35,16 @@ export const api = {
     body: JSON.stringify({ hex }),
   }),
 };
+
+// The faucet runs in the demo service, not in the node (the node never holds keys); the public
+// deployment routes /faucet/* to it. Locally there is none, and these calls fail with 404.
+const post = (path, body) => request(path, {
+  method: "POST",
+  headers: { "Content-Type": "application/json", Accept: "application/json" },
+  body: JSON.stringify(body ?? {}),
+});
+export const faucet = {
+  health: () => request("/faucet/health"),
+  fund: (address) => post("/faucet", { address }),
+  mine: () => post("/faucet/mine"),
+};
