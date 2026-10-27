@@ -6,7 +6,8 @@ namespace MiniBtc.Application.ChainSync;
 /// <param name="ConnectedBlocks">Blocks validated, applied and committed in this run.</param>
 /// <param name="Tip">Our tip when the run ended.</param>
 /// <param name="CoreHeight">Core's tip height as last seen.</param>
-public sealed record SyncReport(int ConnectedBlocks, ChainTip Tip, int CoreHeight)
+/// <param name="DisconnectedBlocks">Blocks undone because Core's chain no longer contains them (a reorg).</param>
+public sealed record SyncReport(int ConnectedBlocks, ChainTip Tip, int CoreHeight, int DisconnectedBlocks = 0)
 {
     public bool CaughtUp => Tip.Height >= CoreHeight;
 }

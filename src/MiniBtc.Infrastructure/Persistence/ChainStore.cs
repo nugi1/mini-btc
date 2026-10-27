@@ -3,6 +3,7 @@ using MiniBtc.Application.Abstractions;
 using MiniBtc.Domain.Blocks;
 using MiniBtc.Domain.Consensus;
 using MiniBtc.Domain.Hashing;
+using MiniBtc.Domain.Serialization;
 using MiniBtc.Domain.Transactions;
 using MiniBtc.Domain.Utxo;
 
@@ -16,6 +17,7 @@ public sealed class ChainStore(MiniBtcDbContext db) : IChainStore
 {
     private ChainStateRecord? _state;
     private UtxoSet? _utxos;
+    private LoadedTipRows? _loadedTip;
 
     public async Task<UtxoSet> LoadAsync(NetworkParams network, CancellationToken cancellationToken = default)
     {
@@ -81,6 +83,54 @@ public sealed class ChainStore(MiniBtcDbContext db) : IChainStore
 
         _state.SyncTip();
     }
+
+    public async Task<StoredBlock> LoadTipBlockAsync(CancellationToken cancellationToken = default)
+    {
+        if (_utxos is null)
+            throw new InvalidOperationException("Load the UTXO set before reading its tip block.");
+
+        // Tracked, not AsNoTracking: if the block is disconnected these rows are deleted in the same save.
+        var hash = _utxos.Tip.Hash.ToWireBytes();
+        var block = await db.Blocks.SingleAsync(b => b.Hash == hash, cancellationToken);
+        var transactions = await db.Transactions.Where(t => t.BlockHash == hash).OrderBy(t => t.Position).ToListAsync(cancellationToken);
+        var undoCoins = await db.UndoCoins.Where(u => u.BlockHash == hash)
+            .OrderBy(u => u.TxPosition).ThenBy(u => u.InputIndex).ToListAsync(cancellationToken);
+        var unverified = await db.UnverifiedScripts.Where(u => u.BlockHash == hash).ToListAsync(cancellationToken);
+        _loadedTip = new LoadedTipRows(block, transactions, undoCoins, unverified);
+
+        var header = BlockHeader.ReadFrom(new ByteReader(block.Header));
+        var stored = new Block(header, transactions.Select(t => Transaction.Parse(t.Raw)));
+        var undo = new BlockUndo(undoCoins
+            .GroupBy(u => u.TxPosition)
+            .OrderBy(group => group.Key)
+            .Select(group => new TxUndo(group.Select(u => new Coin(new TxOut(u.Value, u.ScriptPubKey), u.Height, u.IsCoinbase)))));
+        return new StoredBlock(stored, undo);
+    }
+
+    public void AddDisconnectedBlock(Block block, DisconnectedBlock disconnected)
+    {
+        if (_state is null || _utxos is null)
+            throw new InvalidOperationException("Load the UTXO set before disconnecting blocks.");
+        if (_loadedTip is null || !_loadedTip.Block.Hash.AsSpan().SequenceEqual(block.Hash.ToWireBytes()))
+            throw new InvalidOperationException($"Block {block.Hash} was not read with LoadTipBlockAsync.");
+
+        db.Blocks.Remove(_loadedTip.Block);
+        db.Transactions.RemoveRange(_loadedTip.Transactions);
+        db.UndoCoins.RemoveRange(_loadedTip.UndoCoins);
+        db.UnverifiedScripts.RemoveRange(_loadedTip.UnverifiedScripts);
+        _loadedTip = null;
+
+        foreach (var removed in disconnected.Changes.Spent) RemoveCoin(removed);
+        foreach (var (outPoint, coin) in disconnected.Changes.Created) db.Coins.Add(ToRecord(outPoint, coin));
+
+        _state.SyncTip();
+    }
+
+    private sealed record LoadedTipRows(
+        BlockRecord Block,
+        List<TransactionRecord> Transactions,
+        List<UndoCoinRecord> UndoCoins,
+        List<UnverifiedScriptRecord> UnverifiedScripts);
 
     private void AddBlockRows(Block block, int height, long fees)
     {

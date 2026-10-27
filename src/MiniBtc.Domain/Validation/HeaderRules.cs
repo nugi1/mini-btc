@@ -47,7 +47,7 @@ public sealed class BuildsOnTipRule : IRule<BlockContext>
     public Result Check(BlockContext context) =>
         context.Block.Header.PreviousBlockHash == context.Tip.Hash
             ? Result.Success()
-            : new Error("prev-blk-not-found",
+            : new Error(HeaderErrors.PrevBlockNotFound,
                 $"block {context.Block.Hash} builds on {context.Block.Header.PreviousBlockHash}, not on the tip {context.Tip.Hash}");
 }
 
@@ -67,4 +67,11 @@ public sealed class MerkleRootRule : IRule<BlockContext>
             return new Error("bad-txns-duplicate", "duplicate transaction");
         return Result.Success();
     }
+}
+
+/// <summary>Header reject codes other code reacts to.</summary>
+public static class HeaderErrors
+{
+    /// <summary>Core's code for a block whose parent it doesn't have (validation.cpp AcceptBlockHeader).</summary>
+    public const string PrevBlockNotFound = "prev-blk-not-found";
 }

@@ -159,4 +159,47 @@ public class ChainSynchronizerTests
 
         Assert.Equal(SyncErrors.BlockHashMismatch, result.Error!.Code);
     }
+
+    [Fact]
+    public async Task Follows_core_back_when_its_tip_is_invalidated()
+    {
+        _core.Mine(3);
+        await Synchronizer().SyncToTipAsync();
+        var height2 = _core.Blocks[2].Hash;
+
+        _core.Invalidate(1);
+        var report = (await Synchronizer().SyncToTipAsync()).Value;
+
+        Assert.Equal((1, 0), (report.DisconnectedBlocks, report.ConnectedBlocks));
+        Assert.Equal(new ChainTip(height2, 2), report.Tip);
+        Assert.Equal(_core.Blocks.Skip(1).Select(b => b.Hash), _db.Committed.Select(b => b.Hash));
+    }
+
+    [Fact]
+    public async Task Switches_to_a_longer_branch_disconnecting_back_to_the_fork_point()
+    {
+        _core.Mine(4);
+        await Synchronizer().SyncToTipAsync();
+
+        _core.Invalidate(2).MineFork(3); // the fork point is height 2; the new branch reaches height 5
+
+        var report = (await Synchronizer().SyncToTipAsync()).Value;
+
+        Assert.Equal((2, 3), (report.DisconnectedBlocks, report.ConnectedBlocks));
+        Assert.Equal(new ChainTip(_core.Blocks[^1].Hash, 5), report.Tip);
+        Assert.Equal(_core.Blocks.Skip(1).Select(b => b.Hash), _db.Committed.Select(b => b.Hash));
+    }
+
+    [Fact]
+    public async Task A_restarted_node_finds_the_fork_from_its_stored_tip()
+    {
+        _core.Mine(3);
+        _db.Seed(_core.Blocks.Skip(1)); // stored by an earlier run
+        _core.Invalidate(1).MineFork(2);
+
+        var report = (await Synchronizer().SyncToTipAsync()).Value;
+
+        Assert.Equal((1, 2), (report.DisconnectedBlocks, report.ConnectedBlocks));
+        Assert.Equal(_core.Blocks[^1].Hash, report.Tip.Hash);
+    }
 }

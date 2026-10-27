@@ -10,6 +10,7 @@ namespace MiniBtc.Infrastructure.Messaging;
 /// </summary>
 public static class IntegrationEvents
 {
-    public static void Configure(IntegrationEventMap map) =>
-        map.Map((BlockConnected e) => new BlockConnectedV1(e.BlockHash.ToString(), e.Height, e.TransactionCount));
+    public static void Configure(IntegrationEventMap map) => map
+        .Map((BlockConnected e) => new BlockConnectedV1(e.BlockHash.ToString(), e.Height, e.TransactionCount))
+        .Map((BlockDisconnected e) => new BlockDisconnectedV1(e.BlockHash.ToString(), e.Height, e.TransactionCount));
 }

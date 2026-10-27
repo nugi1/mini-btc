@@ -69,7 +69,9 @@ public sealed class ChainSyncWorker(
                 return problem;
             }
 
-            if (result.Value.ConnectedBlocks > 0)
+            if (result.Value.DisconnectedBlocks > 0)
+                logger.LogWarning("Reorg: disconnected {Count} block(s) Core no longer has", result.Value.DisconnectedBlocks);
+            if (result.Value.ConnectedBlocks > 0 || result.Value.DisconnectedBlocks > 0)
                 logger.LogInformation("Connected {Count} block(s); tip is now height {Height} ({Hash})",
                     result.Value.ConnectedBlocks, result.Value.Tip.Height, result.Value.Tip.Hash);
             return null;

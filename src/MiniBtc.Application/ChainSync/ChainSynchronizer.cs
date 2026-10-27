@@ -4,6 +4,7 @@ using MiniBtc.Domain.Blocks;
 using MiniBtc.Domain.Consensus;
 using MiniBtc.Domain.Serialization;
 using MiniBtc.Domain.Utxo;
+using MiniBtc.Domain.Validation;
 using Patterns.DDD;
 using Patterns.DDD.Application;
 
@@ -12,8 +13,10 @@ namespace MiniBtc.Application.ChainSync;
 /// <summary>
 /// Brings our chain level with Core's: every block above our tip is fetched as raw bytes, decoded and
 /// validated by our own code, applied to the UTXO set and committed, one database transaction per block.
+/// If Core has left our branch (a reorg, or invalidateblock), our blocks that Core no longer has are
+/// disconnected first, newest first, each in its own transaction, until our tip is on Core's chain.
 /// It does not care what triggered it (startup, a ZMQ notification, a timer): it always walks from our
-/// tip to Core's tip by height, so it is safe to run any number of times.
+/// tip to Core's tip, so it is safe to run any number of times. The mempool view follows each block.
 /// </summary>
 public sealed class ChainSynchronizer(
     IBitcoinCoreRpc core,
@@ -26,7 +29,7 @@ public sealed class ChainSynchronizer(
     /// <summary>
     /// Fails with SyncErrors when Core is not the chain we validate, or with the block's reject code
     /// when our rules reject a block Core accepted. That is a disagreement between two implementations,
-    /// so the run stops there and never skips the block. prev-blk-not-found means Core changed branch.
+    /// so the run stops there and never skips the block.
     /// </summary>
     public async Task<Result<SyncReport>> SyncToTipAsync(CancellationToken cancellationToken = default)
     {
@@ -41,22 +44,45 @@ public sealed class ChainSynchronizer(
         var utxos = await store.LoadAsync(network, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken); // records genesis on a fresh database; otherwise a no-op
 
-        var connected = 0;
-        while (utxos.Tip.Height < info.Blocks)
+        var (connected, disconnected) = (0, 0);
+        while (true)
         {
+            // Back off our branch until our tip is a block Core's active chain contains.
+            while (utxos.Tip.Height > 0 && !await IsOnCoresChainAsync(utxos.Tip, info, cancellationToken))
+            {
+                var undone = await DisconnectTipAsync(utxos, cancellationToken);
+                if (undone.IsFailure)
+                    return undone.Error;
+                disconnected++;
+            }
+
+            var switchedBranch = false;
             while (utxos.Tip.Height < info.Blocks)
             {
                 var step = await ConnectNextAsync(utxos, cancellationToken);
+                if (step.IsFailure && step.Error.Code == HeaderErrors.PrevBlockNotFound)
+                {
+                    switchedBranch = true; // Core reorganized while we were connecting: look again
+                    break;
+                }
                 if (step.IsFailure)
                     return step.Error;
                 connected++;
             }
 
-            // Core may have mined while we were syncing: look again before declaring ourselves level.
+            // Core may have mined, or reorganized, while we were syncing: look again before declaring ourselves level.
             info = await core.GetBlockchainInfoAsync(cancellationToken);
+            if (!switchedBranch && utxos.Tip.Height == info.Blocks && utxos.Tip.Hash == info.BestBlockHash)
+                return new SyncReport(connected, utxos.Tip, info.Blocks, disconnected);
         }
+    }
 
-        return new SyncReport(connected, utxos.Tip, info.Blocks);
+    /// <summary>Is our tip in Core's active chain? At Core's height compare with its tip; below it, ask.</summary>
+    private async Task<bool> IsOnCoresChainAsync(ChainTip tip, BlockchainInfo info, CancellationToken cancellationToken)
+    {
+        if (tip.Height > info.Blocks) return false;
+        if (tip.Height == info.Blocks) return tip.Hash == info.BestBlockHash;
+        return await core.GetBlockHashAsync(tip.Height, cancellationToken) == tip.Hash;
     }
 
     private async Task<Result> ConnectNextAsync(UtxoSet utxos, CancellationToken cancellationToken)
@@ -84,7 +110,21 @@ public sealed class ChainSynchronizer(
 
         store.AddConnectedBlock(block, result.Value);
         await unitOfWork.SaveChangesAsync(cancellationToken);
-        mempool.Update(view => view.RemoveForBlock(block)); // confirmed now, and their conflicts can never be
+        mempool.Update(view => view.RemoveForBlock(block));
+        return Result.Success();
+    }
+
+    private async Task<Result> DisconnectTipAsync(UtxoSet utxos, CancellationToken cancellationToken)
+    {
+        var height = utxos.Tip.Height;
+        var stored = await store.LoadTipBlockAsync(cancellationToken);
+        var result = utxos.Disconnect(stored.Block, stored.Undo);
+        if (result.IsFailure)
+            return new Error(result.Error.Code, $"block {stored.Block.Hash} at height {height}: {result.Error.Message}");
+
+        store.AddDisconnectedBlock(stored.Block, result.Value);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        mempool.Update(view => view.ReturnFromDisconnectedBlock(stored.Block));
         return Result.Success();
     }
 

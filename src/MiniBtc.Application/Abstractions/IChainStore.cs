@@ -19,4 +19,19 @@ public interface IChainStore
 
     /// <summary>Stages a block that the loaded set has just connected: its rows, the UTXO change, undo data, the new tip.</summary>
     void AddConnectedBlock(Block block, ConnectedBlock connected);
+
+    /// <summary>
+    /// The loaded set's tip block as stored, with the undo data saved when it was connected:
+    /// everything <see cref="UtxoSet.Disconnect"/> needs.
+    /// </summary>
+    Task<StoredBlock> LoadTipBlockAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stages a block that the loaded set has just disconnected: its rows and undo data go, the
+    /// UTXO change is applied, the tip moves back.
+    /// </summary>
+    void AddDisconnectedBlock(Block block, DisconnectedBlock disconnected);
 }
+
+/// <summary>A connected block read back from storage, with its undo data.</summary>
+public sealed record StoredBlock(Block Block, BlockUndo Undo);

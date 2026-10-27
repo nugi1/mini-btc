@@ -21,3 +21,16 @@ public sealed record UtxoChanges(IReadOnlyList<OutPoint> Spent, IReadOnlyList<Ke
 
 /// <summary>One input accepted without script verification, and why.</summary>
 public sealed record UnverifiedScript(UInt256 Txid, int InputIndex, string Reason);
+
+/// <summary>What disconnecting a block produced.</summary>
+/// <param name="Changes">Spent: the block's outputs, removed. Created: the coins its inputs had spent, restored.</param>
+/// <param name="Unconfirmed">Its non-coinbase transactions, in block order: unconfirmed again.</param>
+public sealed record DisconnectedBlock(UtxoChanges Changes, IReadOnlyList<Transaction> Unconfirmed);
+
+/// <summary>Reject codes for a disconnect. Core reports these only in its log, so the codes are ours.</summary>
+public static class DisconnectErrors
+{
+    public const string NotTip = "disconnect-not-tip";
+    public const string BadUndo = "bad-undo-data";
+    public const string Unclean = "disconnect-unclean";
+}

@@ -32,6 +32,21 @@ internal sealed class FakeCore
     public (int Code, string Message)? RejectSends { get; set; }
     public int SendRequests { get; private set; }
 
+    /// <summary>Like invalidateblock on the tip, <paramref name="count"/> times: the chain gets shorter.</summary>
+    public FakeCore Invalidate(int count)
+    {
+        _chain.RemoveRange(_chain.Count - count, count);
+        return this;
+    }
+
+    /// <summary>Mines a branch whose coinbases pay 49 BTC, so its blocks differ from any mined by <see cref="Mine"/>.</summary>
+    public FakeCore MineFork(int count)
+    {
+        for (var i = 0; i < count; i++)
+            Append(MinedBlock(_chain[^1].Hash, Coinbase(_chain.Count, 49 * ConsensusConstants.Coin)));
+        return this;
+    }
+
     /// <summary>Mines <paramref name="count"/> coinbase-only blocks on top of the chain.</summary>
     public FakeCore Mine(int count)
     {
@@ -99,8 +114,11 @@ internal sealed class FakeCore
 internal sealed class FakeDatabase
 {
     private readonly List<Block> _committed = [];
+    private readonly Dictionary<UInt256, BlockUndo> _undo = new();
     private readonly List<Block> _staged = [];
+    private readonly List<UInt256> _stagedRemovals = [];
     private bool _genesisStaged;
+    private UtxoSet? _loaded;
 
     public IReadOnlyList<Block> Committed => _committed;
     public bool GenesisCommitted { get; private set; }
@@ -123,13 +141,28 @@ internal sealed class FakeDatabase
             var utxos = UtxoSet.AtGenesis(network);
             foreach (var block in db._committed)
             {
-                if (utxos.Connect(block).IsFailure) throw new InvalidOperationException("seeded chain is invalid");
+                var connected = utxos.Connect(block);
+                if (connected.IsFailure) throw new InvalidOperationException("seeded chain is invalid");
+                db._undo[block.Hash] = connected.Value.Undo;
             }
             if (!db.GenesisCommitted) db._genesisStaged = true;
+            db._loaded = utxos;
             return Task.FromResult(utxos);
         }
 
-        public void AddConnectedBlock(Block block, ConnectedBlock connected) => db._staged.Add(block);
+        public void AddConnectedBlock(Block block, ConnectedBlock connected)
+        {
+            db._staged.Add(block);
+            db._undo[block.Hash] = connected.Undo;
+        }
+
+        public Task<StoredBlock> LoadTipBlockAsync(CancellationToken cancellationToken = default)
+        {
+            var tip = db._committed.Single(b => b.Hash == db._loaded!.Tip.Hash);
+            return Task.FromResult(new StoredBlock(tip, db._undo[tip.Hash]));
+        }
+
+        public void AddDisconnectedBlock(Block block, DisconnectedBlock disconnected) => db._stagedRemovals.Add(block.Hash);
     }
 
     private sealed class UnitOfWorkPort(FakeDatabase db) : IUnitOfWork
@@ -137,7 +170,9 @@ internal sealed class FakeDatabase
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
             db.Saves++;
-            var rows = db._staged.Count + (db._genesisStaged ? 1 : 0);
+            var rows = db._staged.Count + db._stagedRemovals.Count + (db._genesisStaged ? 1 : 0);
+            db._committed.RemoveAll(block => db._stagedRemovals.Contains(block.Hash));
+            db._stagedRemovals.Clear();
             db._committed.AddRange(db._staged);
             db._staged.Clear();
             if (db._genesisStaged) (db.GenesisCommitted, db._genesisStaged) = (true, false);

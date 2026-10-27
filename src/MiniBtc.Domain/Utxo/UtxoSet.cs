@@ -11,7 +11,8 @@ namespace MiniBtc.Domain.Utxo;
 /// The set of every spendable coin at the current tip (Core: the chainstate's CCoinsView).
 /// It is the aggregate that guards the node's central invariant: a coin exists until exactly one
 /// transaction in the active chain spends it. All changes go through <see cref="Connect"/>,
-/// one whole block at a time, and each one raises <see cref="BlockConnected"/>.
+/// or <see cref="Disconnect"/>, one whole block at a time, and each raises <see cref="BlockConnected"/>
+/// or <see cref="BlockDisconnected"/>.
 /// Identity: the network it follows; the node keeps one UTXO set per chain.
 /// </summary>
 public sealed class UtxoSet : AggregateRoot<string>
@@ -137,6 +138,60 @@ public sealed class UtxoSet : AggregateRoot<string>
     }
 
     /// <summary>
+    /// Undoes the tip block, as Core's DisconnectBlock does: walking the transactions backwards, it
+    /// removes each one's outputs and puts back the coins its inputs spent, taken from the undo data
+    /// stored when the block was connected. The tip moves to the block's parent. Every removed output
+    /// must be exactly the coin the block created and every restored coin must be absent; Core calls
+    /// a mismatch an unclean disconnect. Here it fails, and the set is left unchanged.
+    /// </summary>
+    public Result<DisconnectedBlock> Disconnect(Block block, BlockUndo undo)
+    {
+        ArgumentNullException.ThrowIfNull(block);
+        ArgumentNullException.ThrowIfNull(undo);
+        if (block.Hash != Tip.Hash)
+            return new Error(DisconnectErrors.NotTip, $"block {block.Hash} is not the tip {Tip.Hash}");
+        if (Tip.Height == 0)
+            return new Error(DisconnectErrors.NotTip, "the genesis block can't be disconnected");
+        if (undo.Transactions.Count + 1 != block.Transactions.Count)
+            return new Error(DisconnectErrors.BadUndo, "block and undo data inconsistent");
+
+        var height = Tip.Height;
+        var view = new CoinsView(_coins);
+        for (var position = block.Transactions.Count - 1; position >= 0; position--)
+        {
+            var tx = block.Transactions[position];
+            for (var index = 0; index < tx.Outputs.Count; index++)
+            {
+                var output = tx.Outputs[index];
+                if (output.IsUnspendable) continue;
+                var outPoint = new OutPoint(tx.Txid, (uint)index);
+                var coin = view.Get(outPoint);
+                if (coin is null || !coin.Output.Equals(output) || coin.Height != height || coin.IsCoinbase != tx.IsCoinbase)
+                    return new Error(DisconnectErrors.Unclean, $"output {outPoint} is not the coin block {block.Hash} created");
+                view.Spend(outPoint);
+            }
+
+            if (tx.IsCoinbase) continue;
+            var spent = undo.Transactions[position - 1].SpentCoins;
+            if (spent.Count != tx.Inputs.Count)
+                return new Error(DisconnectErrors.BadUndo, $"undo data for tx {tx.Txid} has {spent.Count} coins for {tx.Inputs.Count} inputs");
+            for (var input = tx.Inputs.Count - 1; input >= 0; input--)
+            {
+                var prevOut = tx.Inputs[input].PrevOut;
+                if (view.Get(prevOut) is not null)
+                    return new Error(DisconnectErrors.Unclean, $"restoring {prevOut} would overwrite an unspent coin");
+                view.Restore(prevOut, spent[input]);
+            }
+        }
+
+        var changes = view.Changes();
+        view.CommitTo(_coins);
+        Tip = new ChainTip(block.Header.PreviousBlockHash, height - 1);
+        Raise(new BlockDisconnected(block.Hash, height, block.Transactions.Count));
+        return new DisconnectedBlock(changes, block.Transactions.Where(tx => !tx.IsCoinbase).ToList());
+    }
+
+    /// <summary>
     /// Pending changes on top of the set: coins this block created, and outpoints it spent from the
     /// set. A coin created earlier in the same block can be spent by a later transaction.
     /// </summary>
@@ -160,6 +215,14 @@ public sealed class UtxoSet : AggregateRoot<string>
         }
 
         public void Add(OutPoint outPoint, Coin coin) => _added.Add(outPoint, coin);
+
+        /// <summary>Puts a spent coin back. Callers check with <see cref="Get"/> that the outpoint is free.</summary>
+        public void Restore(OutPoint outPoint, Coin coin)
+        {
+            if (_spentFromParent.Remove(outPoint) && parent.TryGetValue(outPoint, out var original) && original == coin)
+                return; // removed and put back unchanged: no net change
+            _added[outPoint] = coin;
+        }
 
         public UtxoChanges Changes() => new([.. _spentFromParent], [.. _added]);
 
