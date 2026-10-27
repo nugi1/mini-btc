@@ -2,10 +2,11 @@
 python -m wallet [--wallet NAME] new [--wif WIF]
 python -m wallet [--wallet NAME] address
 python -m wallet [--wallet NAME] balance
-python -m wallet [--wallet NAME] send --to ADDRESS --amount BTC [--fee-rate SAT_PER_VB] [--dry-run]
+python -m wallet [--wallet NAME] send --to ADDRESS --amount BTC [--fee-rate SAT_PER_VB] [--dry-run | --direct]
 
-The wallet asks the node which coins it has and Core whether a transaction is acceptable. Until the
-node's broadcast gateway exists (E4), `send` hands the signed bytes to Core's sendrawtransaction.
+The wallet asks the node which coins it has, and broadcasts through the node's gateway (POST /tx),
+which checks the transaction before Core sees it. --direct skips the node and hands the bytes to
+Core's sendrawtransaction; --dry-run only asks Core's testmempoolaccept.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from wallet.address import AddressError, decode_address
 from wallet.builder import DEFAULT_FEE_RATE, InsufficientFunds, Payment, build_payment
 from wallet.keys import InvalidKey, Key
 from wallet.network import REGTEST
-from wallet.node_client import NodeClient, NodeError
+from wallet.node_client import NodeClient, NodeError, Rejected
 from wallet.signing import sign_p2pkh
 from wallet.tx import Transaction
 
@@ -57,7 +58,9 @@ def main(argv: list[str] | None = None) -> int:
     send.add_argument("--to", required=True, metavar="ADDRESS")
     send.add_argument("--amount", required=True, type=parse_btc, metavar="BTC")
     send.add_argument("--fee-rate", type=Decimal, default=DEFAULT_FEE_RATE, metavar="SAT_PER_VB")
-    send.add_argument("--dry-run", action="store_true", help="ask Core's testmempoolaccept instead of broadcasting")
+    how = send.add_mutually_exclusive_group()
+    how.add_argument("--dry-run", action="store_true", help="ask Core's testmempoolaccept instead of broadcasting")
+    how.add_argument("--direct", action="store_true", help="send straight to Core, bypassing the node's checks")
 
     args = parser.parse_args(argv)
     path = store.wallet_path(args.wallet)
@@ -80,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"immature   {btc(balance['immature'])} BTC")
             print(f"total      {btc(balance['total'])} BTC in {balance['utxoCount']} coin(s), node tip {balance['tipHeight']}")
         else:
-            return _send(key, args.to, args.amount, args.fee_rate, args.dry_run)
+            return _send(key, args.to, args.amount, args.fee_rate, "dry-run" if args.dry_run else "direct" if args.direct else "node")
     except (FileExistsError, FileNotFoundError, ValueError, InvalidKey, AddressError,
             NodeError, CoreRpcError, InsufficientFunds) as error:
         print(f"error: {error}", file=sys.stderr)
@@ -88,23 +91,30 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _send(key: Key, to: str, amount: int, fee_rate: Decimal, dry_run: bool) -> int:
+def _send(key: Key, to: str, amount: int, fee_rate: Decimal, route: str) -> int:
     pay_to = decode_address(to, REGTEST).script_pubkey
-    tip, coins = NodeClient().utxos(key.address(REGTEST))
+    node = NodeClient()
+    tip, coins = node.utxos(key.address(REGTEST))
     payment = build_payment(coins, pay_to, amount, key.script_pubkey, fee_rate)
     signed = sign_p2pkh(payment.tx, [c.script_pubkey for c in payment.spent], key)
     _describe(payment, signed, tip)
 
-    core = CoreRpc()
-    if dry_run:
-        verdict = core.testmempoolaccept([signed.hex()])[0]
+    if route == "dry-run":
+        verdict = CoreRpc().testmempoolaccept([signed.hex()])[0]
         if verdict["allowed"]:
             print(f"Core would accept it: txid {verdict['txid']}, vsize {verdict['vsize']}")
             return 0
         print(f"Core would reject it: {verdict['reject-reason']}", file=sys.stderr)
         return 1
-    txid = core.sendrawtransaction(signed.hex())
-    print(txid)
+    if route == "direct":
+        print(CoreRpc().sendrawtransaction(signed.hex()))
+        return 0
+    try:
+        print(node.broadcast(signed.hex()))
+    except Rejected as rejection:
+        print(f"rejected by {rejection.rejected_by}: {rejection.code}", file=sys.stderr)
+        print(f"  {rejection.detail}", file=sys.stderr)
+        return 1
     return 0
 
 

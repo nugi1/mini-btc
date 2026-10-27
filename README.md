@@ -42,5 +42,23 @@ uv run python -m wallet --wallet alice balance
 uv run python -m wallet --wallet alice send --to "$(uv run python -m wallet --wallet bob address)" --amount 10 --dry-run
 ```
 
+`send` without `--dry-run` goes through the node's gateway (`POST /tx`): the node checks the
+transaction against its own UTXO set and mempool view, and only then hands it to Core.
+
 The node answers `GET /addresses/{address}/utxos` and `/balance` (satoshis; spendable means
-spendable in the next block). Wallet keys live in `~/.minibtc/<name>.json`, readable only by you.
+spendable in the next block), `POST /tx` and `GET /mempool`. Wallet keys live in
+`~/.minibtc/<name>.json`, readable only by you.
+
+### Double spend and reorg
+
+```bash
+uv run python -m wallet --wallet carol new
+uv run python -m wallet --wallet alice send --to "$(uv run python -m wallet --wallet bob address)" --amount 10
+# Spending the same coin again is refused by the node (bip125-replacement-disallowed) ...
+uv run python -m wallet --wallet alice send --to "$(uv run python -m wallet --wallet carol address)" --amount 10
+# ... and, sent straight to Core, by Core ("insufficient fee": a replacement must pay more).
+uv run python -m wallet --wallet alice send --to "$(uv run python -m wallet --wallet carol address)" --amount 10 --direct
+
+# Make Core drop its tip; the node disconnects the block from its undo data and follows.
+scripts/btc-cli.sh invalidateblock "$(scripts/btc-cli.sh getbestblockhash)"
+```

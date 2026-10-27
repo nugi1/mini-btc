@@ -3,7 +3,7 @@
 | Package | What it owns | Talks to |
 | --- | --- | --- |
 | `btc_rpc` | A small JSON-RPC client for Bitcoin Core | Core's RPC (127.0.0.1:18443) |
-| `wallet` | Keys, addresses, coin selection, signing | The node's REST API for UTXOs; Core to broadcast (until E4's gateway) |
+| `wallet` | Keys, addresses, coin selection, signing | The node's REST API: UTXOs, and broadcasting through its gateway (`POST /tx`) |
 | `miner` | Producing regtest blocks | Core's RPC |
 
 The wallet never decides validity and the node never sees a private key.

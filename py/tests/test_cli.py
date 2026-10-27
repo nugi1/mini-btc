@@ -44,9 +44,14 @@ def node(fake_http, monkeypatch):
         if path == f"/addresses/{address}/balance":
             return 200, {"address": address, "tipHeight": 101, "spendable": 50 * BTC, "immature": 50 * BTC,
                          "total": 100 * BTC, "utxoCount": 2}
+        if method == "POST" and path == "/tx":
+            if server.reject:
+                return 400, server.reject
+            return 200, {"txid": Transaction.parse(body["hex"]).txid, "fee": 226, "unverifiedInputs": 0}
         return 400, {"error": "Invalid or unsupported Base58-encoded address."}
 
     server = fake_http(route)
+    server.reject = None  # set to a 400 body to make POST /tx refuse
     monkeypatch.setenv("MINIBTC_NODE_URL", server.url)
     return server
 
@@ -108,15 +113,38 @@ def test_send_spends_only_the_mature_coin_signs_it_and_asks_core(wallet_dir, nod
     assert "Core would accept it" in capsys.readouterr().out
 
 
-def test_send_broadcasts_and_prints_the_txid(wallet_dir, node, core, capsys):
+def test_send_goes_through_the_nodes_gateway_and_prints_the_txid(wallet_dir, node, core, capsys):
     main(["--wallet", "alice", "new", "--wif", KEY_ONE.wif(REGTEST)])
     capsys.readouterr()
 
     assert main(["--wallet", "alice", "send", "--to", BOB, "--amount", "1.5"]) == 0
 
+    method, path, _, body = node.requests[-1]
+    assert (method, path) == ("POST", "/tx")
+    assert capsys.readouterr().out.strip() == Transaction.parse(body["hex"]).txid
+    assert core.requests == []
+
+
+def test_send_direct_skips_the_node_and_goes_to_core(wallet_dir, node, core, capsys):
+    main(["--wallet", "alice", "new", "--wif", KEY_ONE.wif(REGTEST)])
+    capsys.readouterr()
+
+    assert main(["--wallet", "alice", "send", "--to", BOB, "--amount", "1.5", "--direct"]) == 0
+
     sent = Transaction.parse(core.requests[-1][3]["params"][0])
     assert capsys.readouterr().out.strip() == sent.txid
     assert core.requests[-1][3]["method"] == "sendrawtransaction"
+    assert all(path != "/tx" for _, path, _, _ in node.requests)
+
+
+def test_a_rejection_says_who_rejected_it_and_why(wallet_dir, node, core, capsys):
+    main(["--wallet", "alice", "new", "--wif", KEY_ONE.wif(REGTEST)])
+    node.reject = {"rejectedBy": "node", "code": "bip125-replacement-disallowed",
+                   "error": "already spent by mempool transaction cc…"}
+
+    assert main(["--wallet", "alice", "send", "--to", BOB, "--amount", "1"]) == 1
+
+    assert "rejected by node: bip125-replacement-disallowed" in capsys.readouterr().err
 
 
 def test_more_than_the_spendable_balance_fails_before_anything_is_signed(wallet_dir, node, core, capsys):
