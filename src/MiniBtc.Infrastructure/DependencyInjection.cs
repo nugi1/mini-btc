@@ -41,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<IAddressIndex, AddressIndex>();
         services.AddScoped<ICoinLookup, CoinLookup>();
         services.AddScoped<IUtxoStats, UtxoStats>();
+        services.AddScoped<IExplorerReadModel, ExplorerReadModel>();
         return services;
     }
 }

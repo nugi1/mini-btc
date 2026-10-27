@@ -12,6 +12,20 @@ coins through it.
 
 Build: `dotnet build MiniBtc.slnx && dotnet test MiniBtc.slnx`
 
+## Explorer
+
+Start the node and open <http://127.0.0.1:5080>. It shows the chain as the node validated it: tip
+and sync state against Core, latest blocks, the mempool view, transactions decoded input by input,
+address balances, a parity check against Core, and a broadcast form for the gateway. Updates arrive
+live over SignalR (`/hubs/chain`). It is plain HTML, CSS and JavaScript modules in
+`src/MiniBtc.Api/wwwroot`: no build step.
+
+JSON behind it: `GET /chain/summary`, `/blocks`, `/blocks/{height|hash}`, `/tx/{txid}`,
+`/mempool/entries`, `/parity?address=…`.
+
+Rejections are logged with the rule as a structured `{Rule}` field; for one JSON object per line,
+run with `Logging__Console__FormatterName=json`.
+
 ## Local environment
 
 ```bash

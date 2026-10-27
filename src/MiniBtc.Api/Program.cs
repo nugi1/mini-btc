@@ -6,6 +6,7 @@ using MiniBtc.Application.Abstractions;
 using MiniBtc.Application.Addresses;
 using MiniBtc.Application.Broadcast;
 using MiniBtc.Application.ChainSync;
+using MiniBtc.Application.Explorer;
 using MiniBtc.Application.Parity;
 using MiniBtc.Application.Unconfirmed;
 using MiniBtc.Domain.Consensus;
@@ -34,6 +35,7 @@ builder.Services.AddSingleton<MempoolState>();
 builder.Services.AddScoped<MempoolSynchronizer>();
 builder.Services.AddScoped<TransactionBroadcaster>();
 builder.Services.AddScoped<ParityCheck>();
+builder.Services.AddScoped<ExplorerQueries>();
 builder.Services.AddSingleton(builder.Configuration.GetSection(ChainSyncWorkerOptions.SectionName).Get<ChainSyncWorkerOptions>() ?? new ChainSyncWorkerOptions());
 builder.Services.AddSingleton<ChainSyncSignal>();
 builder.Services.AddHostedService<ChainSyncWorker>();
@@ -42,6 +44,11 @@ var app = builder.Build();
 
 // The schema must exist before the outbox delivery service and the sync worker touch the database.
 await app.Services.MigrateDatabaseAsync();
+
+// The explorer: static files from wwwroot, index.html at "/". It routes with "#/…", so it never
+// collides with the JSON endpoints below.
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
 // Liveness plus a live check of the Core connection: which chain, and Core's tip.
 app.MapGet("/health", async (IBitcoinCoreRpc core, CancellationToken cancellationToken) =>
@@ -64,6 +71,7 @@ app.MapGet("/health", async (IBitcoinCoreRpc core, CancellationToken cancellatio
 app.MapAddressEndpoints();
 app.MapTransactionEndpoints();
 app.MapParityEndpoints();
+app.MapExplorerEndpoints();
 app.MapHub<ChainHub>(ChainHub.Path);
 
 await app.RunAsync();
