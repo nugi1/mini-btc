@@ -1,0 +1,170 @@
+# CI/CD for mini-bitcoin.
+#   unit         .NET unit tests, Python unit tests, the browser wallet's JS tests. No services.
+#   integration  docker compose up (Core regtest, PostgreSQL, RabbitMQ), the .NET integration tests,
+#                then the node itself and the Python tests that talk to it and to Core.
+#   images       builds both production images, so a broken Dockerfile fails before deploy does.
+#   deploy       pushes to main only, and only when the DEPLOY_ENABLED variable is "true": copies the
+#                code over SSH and rebuilds the existing stack in place. It never deletes anything on
+#                the server: no rsync --delete, no --remove-orphans, no image prune, the server's .env
+#                and the paths in DEPLOY_KEEP are never touched, and every file it overwrites is kept
+#                in .deploy-backups/<commit>.
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore MiniBtc.slnx
+      - run: dotnet build MiniBtc.slnx -c Release --no-restore
+      - name: .NET unit tests
+        run: |
+          for project in tests/MiniBtc.Domain.Tests tests/MiniBtc.Application.Tests tests/MiniBtc.Infrastructure.Tests; do
+            dotnet test "$project" -c Release --no-build --logger "trx;LogFilePrefix=$(basename $project)"
+          done
+
+      - uses: astral-sh/setup-uv@v5
+      - name: Python unit tests
+        working-directory: py
+        run: |
+          uv sync --frozen
+          uv run pytest -m "not integration"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Browser wallet tests
+        run: node --test tests/web/wallet.test.mjs
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-results
+          path: "**/TestResults/*.trx"
+          if-no-files-found: ignore
+
+  integration:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Start Core, PostgreSQL and RabbitMQ
+        run: docker compose up -d --wait
+
+      - run: dotnet build MiniBtc.slnx -c Release
+      - name: .NET integration tests
+        run: dotnet test tests/MiniBtc.Integration.Tests -c Release --no-build
+
+      - name: Start the node on :5080
+        run: |
+          nohup dotnet run --project src/MiniBtc.Api -c Release --no-build --urls http://127.0.0.1:5080 > node.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fs http://127.0.0.1:5080/health && exit 0
+            sleep 2
+          done
+          cat node.log
+          exit 1
+      - name: Python integration tests
+        working-directory: py
+        run: |
+          uv sync --frozen
+          uv run pytest -m integration
+
+      - name: Logs on failure
+        if: failure()
+        run: |
+          cat node.log || true
+          docker compose logs --tail 200
+
+  images:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the node image
+        run: docker build -t minibtc-node:ci .
+      - name: Build the demo image
+        run: docker build -t minibtc-demo:ci py
+
+  deploy:
+    needs: [integration, images]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://${{ vars.SITE_ADDRESS }}
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/mini-bitcoin' }}
+      COMPOSE_FILES: ${{ vars.COMPOSE_FILES || 'docker-compose.yml:docker-compose.deploy.yml' }}
+      DEPLOY_KEEP: ${{ vars.DEPLOY_KEEP }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SSH key and known host
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: Check the existing deployment
+        run: |
+          ssh -i ~/.ssh/deploy_key "$TARGET" "
+            set -e
+            cd '$DEPLOY_PATH'
+            test -f .env || { echo '$DEPLOY_PATH/.env is missing'; exit 1; }
+            COMPOSE_FILE='$COMPOSE_FILES' docker compose ps
+          "
+
+      - name: Copy the code (no deletions, overwritten files backed up)
+        run: |
+          excludes=(--exclude .git --exclude .github --exclude .env --exclude .deploy-backups
+                    --exclude bin --exclude obj --exclude .venv --exclude node_modules)
+          for path in $DEPLOY_KEEP; do excludes+=(--exclude "$path"); done
+          rsync -az --itemize-changes --backup --backup-dir=".deploy-backups/${{ github.sha }}" \
+            "${excludes[@]}" -e "ssh -i ~/.ssh/deploy_key" \
+            ./ "$TARGET:$DEPLOY_PATH/"
+
+      - name: Rebuild changed services in place
+        run: |
+          ssh -i ~/.ssh/deploy_key "$TARGET" "
+            set -e
+            cd '$DEPLOY_PATH'
+            COMPOSE_FILE='$COMPOSE_FILES' docker compose up -d --build
+            COMPOSE_FILE='$COMPOSE_FILES' docker compose ps
+          "
+
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 30); do
+            curl -fs "https://${{ vars.SITE_ADDRESS }}/health" && exit 0
+            sleep 5
+          done
+          exit 1
