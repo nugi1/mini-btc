@@ -18,13 +18,16 @@ builder.Services.AddMessaging(builder.Configuration, x =>
 {
     x.AddConsumer<BlockConnectedLogConsumer>();
     x.AddConsumer<BlockAnnouncedConsumer>();
+    x.AddConsumer<MempoolEventsConsumer, MempoolEventsConsumerDefinition>();
 });
 builder.Services.AddZmqBlockNotifications(builder.Configuration);
+builder.Services.AddZmqSequenceNotifications(builder.Configuration);
 builder.Services.AddSingleton(NetworkParams.Regtest);
 builder.Services.AddSingleton(builder.Configuration.GetSection(ChainSyncOptions.SectionName).Get<ChainSyncOptions>() ?? new ChainSyncOptions());
 builder.Services.AddScoped<ChainSynchronizer>();
 builder.Services.AddScoped<AddressQueries>();
 builder.Services.AddSingleton<MempoolState>();
+builder.Services.AddScoped<MempoolSynchronizer>();
 builder.Services.AddScoped<TransactionBroadcaster>();
 builder.Services.AddSingleton(builder.Configuration.GetSection(ChainSyncWorkerOptions.SectionName).Get<ChainSyncWorkerOptions>() ?? new ChainSyncWorkerOptions());
 builder.Services.AddSingleton<ChainSyncSignal>();

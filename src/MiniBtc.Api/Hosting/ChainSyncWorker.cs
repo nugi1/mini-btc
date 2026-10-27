@@ -1,5 +1,6 @@
 using MiniBtc.Application.Abstractions;
 using MiniBtc.Application.ChainSync;
+using MiniBtc.Application.Unconfirmed;
 
 namespace MiniBtc.Api.Hosting;
 
@@ -26,10 +27,30 @@ public sealed class ChainSyncWorker(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         string? lastProblem = null;
+        var mempoolLoaded = false;
         while (!stoppingToken.IsCancellationRequested)
         {
             lastProblem = await RunOnceAsync(lastProblem, stoppingToken);
+            if (lastProblem is null && !mempoolLoaded)
+                mempoolLoaded = await LoadMempoolAsync(stoppingToken);
             await signal.WaitAsync(options.PollInterval, stoppingToken);
+        }
+    }
+
+    /// <summary>Once the chain is level with Core's, takes Core's mempool as the starting view.</summary>
+    private async Task<bool> LoadMempoolAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            var count = await scope.ServiceProvider.GetRequiredService<MempoolSynchronizer>().ReloadAsync(stoppingToken);
+            logger.LogInformation("Loaded Core's mempool: {Count} transaction(s)", count);
+            return true;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or BitcoinCoreRpcException)
+        {
+            logger.LogWarning("Could not load Core's mempool, will retry: {Message}", ex.Message);
+            return false;
         }
     }
 

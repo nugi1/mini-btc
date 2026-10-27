@@ -1,5 +1,6 @@
 using MiniBtc.Application.Abstractions;
 using MiniBtc.Application.ChainSync;
+using MiniBtc.Application.Unconfirmed;
 using MiniBtc.Domain.Blocks;
 using MiniBtc.Domain.Consensus;
 using MiniBtc.Domain.Hashing;
@@ -12,10 +13,11 @@ public class ChainSynchronizerTests
 {
     private readonly FakeCore _core = new();
     private readonly FakeDatabase _db = new();
+    private readonly MempoolState _mempool = new(NetworkParams.Regtest);
 
     private ChainSynchronizer Synchronizer() => new(
         _core.Rpc, _db.Store, _db.UnitOfWork, NetworkParams.Regtest,
-        new ChainSyncOptions { WarmupRetryDelay = TimeSpan.Zero, WarmupMaxAttempts = 5 });
+        new ChainSyncOptions { WarmupRetryDelay = TimeSpan.Zero, WarmupMaxAttempts = 5 }, _mempool);
 
     [Fact]
     public async Task Catches_up_from_genesis_committing_each_block_on_its_own()

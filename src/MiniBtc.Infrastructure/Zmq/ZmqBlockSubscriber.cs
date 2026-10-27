@@ -14,6 +14,9 @@ public sealed class ZmqOptions
 
     /// <summary>Core's -zmqpubrawblock address, as published by docker-compose.yml.</summary>
     public string RawBlockEndpoint { get; set; } = "tcp://127.0.0.1:28332";
+
+    /// <summary>Core's -zmqpubsequence address: block connect/disconnect and mempool add/remove events.</summary>
+    public string SequenceEndpoint { get; set; } = "tcp://127.0.0.1:28336";
 }
 
 /// <summary>

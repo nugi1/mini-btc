@@ -1,4 +1,5 @@
 using MiniBtc.Application.Abstractions;
+using MiniBtc.Application.Unconfirmed;
 using MiniBtc.Domain.Blocks;
 using MiniBtc.Domain.Consensus;
 using MiniBtc.Domain.Serialization;
@@ -19,7 +20,8 @@ public sealed class ChainSynchronizer(
     IChainStore store,
     IUnitOfWork unitOfWork,
     NetworkParams network,
-    ChainSyncOptions options)
+    ChainSyncOptions options,
+    MempoolState mempool)
 {
     /// <summary>
     /// Fails with SyncErrors when Core is not the chain we validate, or with the block's reject code
@@ -82,6 +84,7 @@ public sealed class ChainSynchronizer(
 
         store.AddConnectedBlock(block, result.Value);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+        mempool.Update(view => view.RemoveForBlock(block)); // confirmed now, and their conflicts can never be
         return Result.Success();
     }
 
