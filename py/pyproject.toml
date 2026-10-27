@@ -1,0 +1,25 @@
+[project]
+name = "minibtc-py"
+version = "0.1.0"
+description = "Python wallet and miner for mini-bitcoin: they move real regtest coins through the .NET node."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    # libsecp256k1 (Bitcoin Core's own curve library) behind a small Python API: key generation,
+    # public key derivation, ECDSA signing with RFC 6979 nonces and low-S output.
+    "coincurve>=21,<22",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+# Three plain packages run with `python -m`; nothing to build or publish.
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+    "integration: needs the docker compose services; some also need the node (see tests/conftest.py)",
+]
