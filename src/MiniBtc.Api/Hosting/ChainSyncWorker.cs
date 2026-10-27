@@ -1,3 +1,4 @@
+using MiniBtc.Api.Observability;
 using MiniBtc.Application.Abstractions;
 using MiniBtc.Application.ChainSync;
 using MiniBtc.Application.Unconfirmed;
@@ -65,7 +66,7 @@ public sealed class ChainSyncWorker(
             {
                 var problem = result.Error.ToString();
                 if (problem != lastProblem) // a rejected block would otherwise be logged every few seconds
-                    logger.LogError("Chain sync stopped: {Code} — {Message}", result.Error.Code, result.Error.Message);
+                    RejectionLog.SyncRejected(logger, result.Error.Code, result.Error.Message);
                 return problem;
             }
 

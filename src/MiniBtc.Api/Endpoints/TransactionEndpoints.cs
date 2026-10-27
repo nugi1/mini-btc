@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using MiniBtc.Api.Observability;
 using MiniBtc.Api.Realtime;
 using MiniBtc.Application.Broadcast;
 using MiniBtc.Application.Unconfirmed;
@@ -11,7 +12,8 @@ namespace MiniBtc.Api.Endpoints;
 /// <summary>
 /// The broadcast gateway and the mempool view. A rejection is a 400 whose "rejectedBy" says whether
 /// the node refused before Core saw the transaction, or Core refused what the node had passed;
-/// "code" is Core's reject reason either way. Both outcomes are pushed to the explorer.
+/// "code" is Core's reject reason either way. Both outcomes are logged by rule and pushed to the
+/// explorer.
 /// </summary>
 public static class TransactionEndpoints
 {
@@ -23,13 +25,16 @@ public static class TransactionEndpoints
             BroadcastRequest request,
             TransactionBroadcaster broadcaster,
             IHubContext<ChainHub, IChainClient> hub,
+            ILoggerFactory loggers,
             CancellationToken cancellationToken) =>
         {
+            var logger = loggers.CreateLogger("MiniBtc.Gateway");
             var hex = request.Hex ?? "";
             var result = await broadcaster.BroadcastAsync(hex, cancellationToken);
             if (result.IsSuccess)
             {
                 var txid = result.Value.Txid.ToString();
+                RejectionLog.TransactionAccepted(logger, txid, result.Value.Fee);
                 await hub.Clients.All.TxAccepted(new TxAcceptedEvent(txid, "gateway"));
                 return Results.Ok(new { txid, fee = result.Value.Fee, unverifiedInputs = result.Value.UnverifiedInputs });
             }
@@ -39,6 +44,7 @@ public static class TransactionEndpoints
                 BroadcastErrors.IsFromCore(result.Error) ? "core" : "node",
                 BroadcastErrors.Reason(result.Error),
                 result.Error.Message);
+            RejectionLog.TransactionRejected(logger, rejection.Txid, rejection.RejectedBy, rejection.Code, rejection.Message);
             await hub.Clients.All.TxRejected(rejection);
             return Results.BadRequest(new { rejectedBy = rejection.RejectedBy, code = rejection.Code, error = rejection.Message });
         });
@@ -52,7 +58,7 @@ public static class TransactionEndpoints
         return app;
     }
 
-    /// <summary>The txid of the submitted bytes, for the explorer, if they decode at all.</summary>
+    /// <summary>The txid of the submitted bytes, for logs and the explorer, if they decode at all.</summary>
     private static string? TxidOf(string hex)
     {
         try
