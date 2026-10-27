@@ -8,5 +8,6 @@ __pycache__/
 .venv/
 *.pyc
 .pytest_cache/
-data/
+# A local bitcoind data directory at the repo root, never test vectors such as py/tests/data.
+/data/
 .DS_Store
