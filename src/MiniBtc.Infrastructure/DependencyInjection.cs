@@ -20,7 +20,8 @@ public static class DependencyInjection
     }
 
     /// <summary>
-    /// Registers the database (connection string "MiniBtc"), the chain store and the unit of work.
+    /// Registers the database (connection string "MiniBtc"), the chain store, the address index and
+    /// the unit of work.
     /// Once MassTransit is registered with AddDomainEventOutbox, its interceptor is attached and
     /// domain events go into the outbox on every save.
     /// </summary>
@@ -37,6 +38,7 @@ public static class DependencyInjection
         });
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<MiniBtcDbContext>());
         services.AddScoped<IChainStore, ChainStore>();
+        services.AddScoped<IAddressIndex, AddressIndex>();
         return services;
     }
 }

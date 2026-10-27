@@ -49,9 +49,8 @@ public sealed class SpentCoinsRule : IRule<TxSpendContext>
         long valueIn = 0;
         foreach (var coin in context.SpentCoins)
         {
-            var depth = context.SpendHeight - coin!.Height;
-            if (coin.IsCoinbase && depth < ConsensusConstants.CoinbaseMaturity)
-                return new Error("bad-txns-premature-spend-of-coinbase", $"tried to spend coinbase at depth {depth}");
+            if (!coin!.IsSpendableAt(context.SpendHeight))
+                return new Error("bad-txns-premature-spend-of-coinbase", $"tried to spend coinbase at depth {context.SpendHeight - coin.Height}");
 
             valueIn += coin.Value;
             if (!ConsensusConstants.IsMoneyRange(coin.Value) || !ConsensusConstants.IsMoneyRange(valueIn))
