@@ -136,6 +136,36 @@ public class BitcoinCoreRpcClientTests
         Assert.Equal(new long[] { 1, 2 }, ids);
     }
 
+    [Fact]
+    public async Task Getrawmempool_asks_for_txids_with_the_mempool_sequence()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, $$$"""
+            {"jsonrpc":"2.0","id":1,"result":{"txids":["{{{GenesisHash}}}"],"mempool_sequence":42}}
+            """);
+
+        var mempool = await CreateClient(handler).GetRawMempoolAsync();
+
+        using var body = JsonDocument.Parse(handler.Requests.Single().Body);
+        Assert.Equal("[false,true]", body.RootElement.GetProperty("params").GetRawText());
+        Assert.Equal(UInt256.Parse(GenesisHash), Assert.Single(mempool.Txids));
+        Assert.Equal(42ul, mempool.MempoolSequence);
+    }
+
+    [Fact]
+    public async Task Sendrawtransaction_rejections_carry_cores_reject_reason()
+    {
+        const string message = "insufficient fee, rejecting replacement 3a7d…; new feerate 0.00001000 BTC/kvB <= old feerate 0.00001000 BTC/kvB";
+        var handler = new StubHandler(HttpStatusCode.OK,
+            $$"""{"jsonrpc":"2.0","error":{"code":{{RpcErrorCodes.TransactionRejected}},"message":"{{message}}"},"id":1}""");
+
+        var ex = await Assert.ThrowsAsync<BitcoinCoreRpcException>(() => CreateClient(handler).SendRawTransactionAsync("00"));
+
+        using var body = JsonDocument.Parse(handler.Requests.Single().Body);
+        Assert.Equal("sendrawtransaction", body.RootElement.GetProperty("method").GetString());
+        Assert.Equal(RpcErrorCodes.TransactionRejected, ex.Code);
+        Assert.Equal(message, ex.CoreMessage);
+    }
+
     private static BitcoinCoreRpcClient CreateClient(StubHandler handler) =>
         new(new HttpClient(handler), Options.Create(new BitcoinCoreOptions()));
 

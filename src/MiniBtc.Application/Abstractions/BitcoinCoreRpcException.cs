@@ -21,6 +21,18 @@ public static class RpcErrorCodes
     /// <summary>RPC_INVALID_PARAMETER — e.g. getblockhash: "Block height out of range".</summary>
     public const int InvalidParameter = -8;
 
+    /// <summary>RPC_DESERIALIZATION_ERROR — e.g. sendrawtransaction: "TX decode failed".</summary>
+    public const int DeserializationError = -22;
+
+    /// <summary>RPC_TRANSACTION_ERROR (RPC_VERIFY_ERROR) — e.g. missing inputs: "bad-txns-inputs-missingorspent".</summary>
+    public const int TransactionError = -25;
+
+    /// <summary>RPC_TRANSACTION_REJECTED (RPC_VERIFY_REJECTED) — the mempool refused it; the message is the reject reason.</summary>
+    public const int TransactionRejected = -26;
+
+    /// <summary>RPC_VERIFY_ALREADY_IN_UTXO_SET — "Transaction outputs already in utxo set".</summary>
+    public const int AlreadyInUtxoSet = -27;
+
     /// <summary>RPC_IN_WARMUP — Core is still starting (loading the block index); retry shortly.</summary>
     public const int InWarmup = -28;
 }

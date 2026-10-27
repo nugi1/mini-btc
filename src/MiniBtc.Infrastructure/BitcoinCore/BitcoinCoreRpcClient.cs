@@ -55,6 +55,26 @@ public sealed class BitcoinCoreRpcClient : IBitcoinCoreRpc
         return Convert.FromHexString(result.GetString()!);
     }
 
+    public async Task<UInt256> SendRawTransactionAsync(string hex, CancellationToken cancellationToken = default)
+    {
+        var result = await CallAsync("sendrawtransaction", [hex], cancellationToken);
+        return UInt256.Parse(result.GetString()!);
+    }
+
+    public async Task<byte[]> GetRawTransactionAsync(UInt256 txid, CancellationToken cancellationToken = default)
+    {
+        var result = await CallAsync("getrawtransaction", [txid.ToString()], cancellationToken);
+        return Convert.FromHexString(result.GetString()!);
+    }
+
+    public async Task<RawMempool> GetRawMempoolAsync(CancellationToken cancellationToken = default)
+    {
+        // verbose=false, mempool_sequence=true: {"txids": [...], "mempool_sequence": n}
+        var result = await CallAsync("getrawmempool", [false, true], cancellationToken);
+        var txids = result.GetProperty("txids").EnumerateArray().Select(t => UInt256.Parse(t.GetString()!)).ToList();
+        return new RawMempool(txids, result.GetProperty("mempool_sequence").GetUInt64());
+    }
+
     private async Task<JsonElement> CallAsync(string method, object[] parameters, CancellationToken cancellationToken)
     {
         var request = new RpcRequest("2.0", Interlocked.Increment(ref _nextId), method, parameters);

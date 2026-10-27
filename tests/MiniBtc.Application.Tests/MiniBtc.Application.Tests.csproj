@@ -16,5 +16,6 @@
   <ItemGroup>
     <!-- Shared chain builder from the domain tests, compiled in rather than copied. -->
     <Compile Include="../MiniBtc.Domain.Tests/TestData/TestChain.cs" Link="TestData/TestChain.cs" />
+    <Compile Include="../MiniBtc.Domain.Tests/TestData/TestSigner.cs" Link="TestData/TestSigner.cs" />
   </ItemGroup>
 </Project>

@@ -3,7 +3,9 @@ using MiniBtc.Api.Endpoints;
 using MiniBtc.Api.Hosting;
 using MiniBtc.Application.Abstractions;
 using MiniBtc.Application.Addresses;
+using MiniBtc.Application.Broadcast;
 using MiniBtc.Application.ChainSync;
+using MiniBtc.Application.Unconfirmed;
 using MiniBtc.Domain.Consensus;
 using MiniBtc.Infrastructure;
 using MiniBtc.Infrastructure.Messaging;
@@ -22,6 +24,8 @@ builder.Services.AddSingleton(NetworkParams.Regtest);
 builder.Services.AddSingleton(builder.Configuration.GetSection(ChainSyncOptions.SectionName).Get<ChainSyncOptions>() ?? new ChainSyncOptions());
 builder.Services.AddScoped<ChainSynchronizer>();
 builder.Services.AddScoped<AddressQueries>();
+builder.Services.AddSingleton<MempoolState>();
+builder.Services.AddScoped<TransactionBroadcaster>();
 builder.Services.AddSingleton(builder.Configuration.GetSection(ChainSyncWorkerOptions.SectionName).Get<ChainSyncWorkerOptions>() ?? new ChainSyncWorkerOptions());
 builder.Services.AddSingleton<ChainSyncSignal>();
 builder.Services.AddHostedService<ChainSyncWorker>();
@@ -50,5 +54,6 @@ app.MapGet("/health", async (IBitcoinCoreRpc core, CancellationToken cancellatio
 });
 
 app.MapAddressEndpoints();
+app.MapTransactionEndpoints();
 
 await app.RunAsync();

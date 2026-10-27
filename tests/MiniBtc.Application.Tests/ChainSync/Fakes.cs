@@ -2,6 +2,7 @@ using MiniBtc.Application.Abstractions;
 using MiniBtc.Domain.Blocks;
 using MiniBtc.Domain.Consensus;
 using MiniBtc.Domain.Hashing;
+using MiniBtc.Domain.Transactions;
 using MiniBtc.Domain.Utxo;
 using Patterns.DDD.Application;
 using static MiniBtc.Domain.Tests.TestData.TestChain;
@@ -22,6 +23,14 @@ internal sealed class FakeCore
 
     public IReadOnlyList<Block> Blocks => _chain;
     public int Height => _chain.Count - 1;
+
+    /// <summary>Core's mempool: what sendrawtransaction accepted, in order.</summary>
+    public List<Transaction> Mempool { get; } = [];
+    public ulong MempoolSequence { get; set; }
+
+    /// <summary>When set, sendrawtransaction fails with this RPC error instead.</summary>
+    public (int Code, string Message)? RejectSends { get; set; }
+    public int SendRequests { get; private set; }
 
     /// <summary>Mines <paramref name="count"/> coinbase-only blocks on top of the chain.</summary>
     public FakeCore Mine(int count)
@@ -61,6 +70,25 @@ internal sealed class FakeCore
             var height = core._chain.FindIndex(b => b.Hash == blockHash);
             return Task.FromResult(core.RawOverride?.Invoke(height) ?? core._chain[height].ToBytes());
         }
+
+        public Task<UInt256> SendRawTransactionAsync(string hex, CancellationToken cancellationToken = default)
+        {
+            core.SendRequests++;
+            if (core.RejectSends is { } reject)
+                throw new BitcoinCoreRpcException("sendrawtransaction", reject.Code, reject.Message);
+            var tx = Transaction.Parse(Convert.FromHexString(hex));
+            core.Mempool.Add(tx);
+            return Task.FromResult(tx.Txid);
+        }
+
+        public Task<byte[]> GetRawTransactionAsync(UInt256 txid, CancellationToken cancellationToken = default) =>
+            core.Mempool.FirstOrDefault(tx => tx.Txid == txid) is { } tx
+                ? Task.FromResult(tx.ToBytes())
+                : throw new BitcoinCoreRpcException("getrawtransaction", RpcErrorCodes.InvalidAddressOrKey,
+                    "No such mempool or blockchain transaction. Use gettransaction for wallet transactions.");
+
+        public Task<RawMempool> GetRawMempoolAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new RawMempool(core.Mempool.Select(tx => tx.Txid).ToList(), core.MempoolSequence));
     }
 }
 
