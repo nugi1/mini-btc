@@ -1,5 +1,9 @@
+using Microsoft.AspNetCore.SignalR;
+using MiniBtc.Api.Realtime;
 using MiniBtc.Application.Broadcast;
 using MiniBtc.Application.Unconfirmed;
+using MiniBtc.Domain.Serialization;
+using MiniBtc.Domain.Transactions;
 using Patterns.DDD;
 
 namespace MiniBtc.Api.Endpoints;
@@ -7,7 +11,7 @@ namespace MiniBtc.Api.Endpoints;
 /// <summary>
 /// The broadcast gateway and the mempool view. A rejection is a 400 whose "rejectedBy" says whether
 /// the node refused before Core saw the transaction, or Core refused what the node had passed;
-/// "code" is Core's reject reason either way.
+/// "code" is Core's reject reason either way. Both outcomes are pushed to the explorer.
 /// </summary>
 public static class TransactionEndpoints
 {
@@ -15,10 +19,29 @@ public static class TransactionEndpoints
 
     public static IEndpointRouteBuilder MapTransactionEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/tx", async (BroadcastRequest request, TransactionBroadcaster broadcaster, CancellationToken cancellationToken) =>
-            (await broadcaster.BroadcastAsync(request.Hex ?? "", cancellationToken)).Match(
-                receipt => Results.Ok(new { txid = receipt.Txid.ToString(), fee = receipt.Fee, unverifiedInputs = receipt.UnverifiedInputs }),
-                Rejected));
+        app.MapPost("/tx", async (
+            BroadcastRequest request,
+            TransactionBroadcaster broadcaster,
+            IHubContext<ChainHub, IChainClient> hub,
+            CancellationToken cancellationToken) =>
+        {
+            var hex = request.Hex ?? "";
+            var result = await broadcaster.BroadcastAsync(hex, cancellationToken);
+            if (result.IsSuccess)
+            {
+                var txid = result.Value.Txid.ToString();
+                await hub.Clients.All.TxAccepted(new TxAcceptedEvent(txid, "gateway"));
+                return Results.Ok(new { txid, fee = result.Value.Fee, unverifiedInputs = result.Value.UnverifiedInputs });
+            }
+
+            var rejection = new TxRejectedEvent(
+                TxidOf(hex),
+                BroadcastErrors.IsFromCore(result.Error) ? "core" : "node",
+                BroadcastErrors.Reason(result.Error),
+                result.Error.Message);
+            await hub.Clients.All.TxRejected(rejection);
+            return Results.BadRequest(new { rejectedBy = rejection.RejectedBy, code = rejection.Code, error = rejection.Message });
+        });
 
         app.MapGet("/mempool", (MempoolState mempool) =>
         {
@@ -29,10 +52,16 @@ public static class TransactionEndpoints
         return app;
     }
 
-    private static IResult Rejected(Error error) => Results.BadRequest(new
+    /// <summary>The txid of the submitted bytes, for the explorer, if they decode at all.</summary>
+    private static string? TxidOf(string hex)
     {
-        rejectedBy = BroadcastErrors.IsFromCore(error) ? "core" : "node",
-        code = BroadcastErrors.Reason(error),
-        error = error.Message,
-    });
+        try
+        {
+            return Transaction.Parse(Convert.FromHexString(hex.Trim())).Txid.ToString();
+        }
+        catch (Exception ex) when (ex is FormatException or DecodeException)
+        {
+            return null;
+        }
+    }
 }

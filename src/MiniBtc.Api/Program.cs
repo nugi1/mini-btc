@@ -1,6 +1,7 @@
 using MassTransit;
 using MiniBtc.Api.Endpoints;
 using MiniBtc.Api.Hosting;
+using MiniBtc.Api.Realtime;
 using MiniBtc.Application.Abstractions;
 using MiniBtc.Application.Addresses;
 using MiniBtc.Application.Broadcast;
@@ -19,7 +20,9 @@ builder.Services.AddMessaging(builder.Configuration, x =>
     x.AddConsumer<BlockConnectedLogConsumer>();
     x.AddConsumer<BlockAnnouncedConsumer>();
     x.AddConsumer<MempoolEventsConsumer, MempoolEventsConsumerDefinition>();
+    x.AddConsumer<ChainHubRelay>();
 });
+builder.Services.AddSignalR();
 builder.Services.AddZmqBlockNotifications(builder.Configuration);
 builder.Services.AddZmqSequenceNotifications(builder.Configuration);
 builder.Services.AddSingleton(NetworkParams.Regtest);
@@ -58,5 +61,6 @@ app.MapGet("/health", async (IBitcoinCoreRpc core, CancellationToken cancellatio
 
 app.MapAddressEndpoints();
 app.MapTransactionEndpoints();
+app.MapHub<ChainHub>(ChainHub.Path);
 
 await app.RunAsync();
