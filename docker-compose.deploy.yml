@@ -1,0 +1,59 @@
+# Public demo on one server, layered over docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.deploy.yml up -d --build
+# Only Caddy is reachable from the internet (80/443, HTTPS certificates automatic). Core, PostgreSQL
+# and RabbitMQ stay on the compose network; their host ports in docker-compose.yml bind to 127.0.0.1.
+services:
+  node:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      bitcoind: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    environment:
+      ConnectionStrings__MiniBtc: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-minibtc};Username=${POSTGRES_USER:-minibtc};Password=${POSTGRES_PASSWORD:-minibtc}"
+      BitcoinCore__Url: "http://bitcoind:18443/"
+      BitcoinCore__User: "${BTC_RPC_USER:-minibtc}"
+      BitcoinCore__Password: "${BTC_RPC_PASSWORD:-minibtc-regtest}"
+      Zmq__RawBlockEndpoint: "tcp://bitcoind:28332"
+      Zmq__SequenceEndpoint: "tcp://bitcoind:28336"
+      RabbitMq__Host: "rabbitmq"
+      RabbitMq__Username: "${RABBITMQ_USER:-minibtc}"
+      RabbitMq__Password: "${RABBITMQ_PASSWORD:-minibtc}"
+
+  # Keeps the demo alive: a payment every ~20 s through the node's gateway, a block every ~60 s.
+  # Also the faucet for the browser wallet on :8090, reachable only through Caddy's /faucet route.
+  demo:
+    build: ./py
+    restart: unless-stopped
+    depends_on:
+      - node
+    environment:
+      MINIBTC_NODE_URL: "http://node:8080"
+      MINIBTC_CORE_RPC_URL: "http://bitcoind:18443/"
+      MINIBTC_CORE_RPC_USER: "${BTC_RPC_USER:-minibtc}"
+      MINIBTC_CORE_RPC_PASSWORD: "${BTC_RPC_PASSWORD:-minibtc-regtest}"
+      MINIBTC_DEMO_BLOCK_SECONDS: "${DEMO_BLOCK_SECONDS:-60}"
+      MINIBTC_DEMO_TX_SECONDS: "${DEMO_TX_SECONDS:-20}"
+      MINIBTC_FAUCET_PORT: "8090"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - node
+      - demo
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # A domain pointing at the server, e.g. 203.0.113.7.sslip.io if you have none of your own.
+      SITE_ADDRESS: "${SITE_ADDRESS:?set SITE_ADDRESS in .env, e.g. 203.0.113.7.sslip.io}"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:

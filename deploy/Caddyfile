@@ -1,0 +1,20 @@
+# HTTPS in front of the node. Caddy gets and renews the Let's Encrypt certificate for SITE_ADDRESS
+# on its own, and proxies WebSockets, so SignalR's live updates work without extra settings.
+{$SITE_ADDRESS} {
+	encode gzip
+
+	# The faucet for the browser wallet runs in the demo service, which holds the demo's keys.
+	# The node never holds keys, so its requests never go to the node.
+	handle /faucet* {
+		reverse_proxy demo:8090
+	}
+	handle {
+		reverse_proxy node:8080
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+	}
+}
